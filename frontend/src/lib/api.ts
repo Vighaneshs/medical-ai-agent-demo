@@ -72,3 +72,13 @@ export async function initiateVoiceCall(sessionId: string) {
   if (!res.ok) throw new Error('Failed to initiate voice call');
   return res.json();
 }
+
+export async function initiatePhoneCall(sessionId: string, phone: string) {
+  const res = await fetch(`${API_URL}/api/voice/call-phone`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, phone }),
+  });
+  if (!res.ok) throw new Error('Failed to place phone call');
+  return res.json();
+}

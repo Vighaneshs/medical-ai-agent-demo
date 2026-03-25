@@ -56,6 +56,7 @@ func main() {
 		r.Post("/chat", chatHandler.HandleChat)
 		r.Get("/availability", handlers.HandleAvailability)
 		r.Post("/voice/initiate", voiceHandler.HandleInitiate)
+		r.Post("/voice/call-phone", voiceHandler.HandleCallPhone)
 		r.Post("/voice/webhook", voiceHandler.HandleWebhook)
 		r.Get("/doctors", handlers.HandleDoctors)
 		r.Get("/appointment", handlers.HandleAppointment)

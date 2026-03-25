@@ -116,6 +116,7 @@ export function IntakeForm({ onSubmit, disabled }: IntakeFormProps) {
             <input
               type="date"
               value={fields.dob}
+              max={new Date().toISOString().split('T')[0]}
               onChange={e => set('dob', e.target.value)}
               onBlur={() => touch('dob')}
               disabled={disabled}
