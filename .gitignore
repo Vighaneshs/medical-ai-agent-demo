@@ -3,7 +3,7 @@
 .env.local
 .env.*.local
 *.env
-
+mike.pem
 # ── Go backend ────────────────────────────────────────────────────────────────
 backend/kyron-medical
 backend/kyron-medical.exe
