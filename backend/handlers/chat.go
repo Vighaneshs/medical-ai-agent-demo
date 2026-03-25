@@ -89,13 +89,27 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	newState := h.executeToolCalls(sess, calls, r)
 	log.Printf("[chat] session=%s new_state=%s", sess.ID, newState)
 
-	// Gemini often makes tool-only turns (no text). Loop up to 3 times until we
-	// get visible text or run out of tool-only continuations to follow.
-	for attempt := 1; attempt <= 3 && assistantText == "" && len(calls) > 0; attempt++ {
+	// Continue in two cases:
+	// 1. Tool-only turn (no text) — Gemini/Haiku sometimes calls tools silently.
+	// 2. State just moved to MATCHING — the AI said "finding a doctor" but didn't
+	//    call confirm_doctor yet; we need another turn to do the doctor matching.
+	needsContinuation := (assistantText == "" && len(calls) > 0) || newState == models.StateMatching
+	for attempt := 1; attempt <= 3 && needsContinuation; attempt++ {
 		if ctx.Err() != nil {
 			return
 		}
 		log.Printf("[chat] session=%s auto-continue attempt=%d state=%s", sess.ID, attempt, sess.State)
+
+		// If there was already text from the previous turn, signal the frontend
+		// to start a new message bubble before streaming the next response.
+		if assistantText != "" {
+			h.sessions.AppendMessage(sess, "assistant", assistantText)
+			assistantText = ""
+			sep, _ := json.Marshal(map[string]bool{"newMessage": true})
+			fmt.Fprintf(w, "data: %s\n\n", sep)
+			flusher.Flush()
+		}
+
 		sp := services.Build(sess)
 		tc := make(chan string, 100)
 		tr := make(chan []services.ToolCallResult, 1)
@@ -115,6 +129,8 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 			newState = h.executeToolCalls(sess, calls, r)
 		}
 		log.Printf("[chat] session=%s continuation attempt=%d done: text_len=%d new_state=%s", sess.ID, attempt, len(assistantText), newState)
+		// After first iteration, only continue for silent tool-only turns
+		needsContinuation = assistantText == "" && len(calls) > 0
 	}
 
 	if assistantText != "" {
@@ -192,18 +208,26 @@ func (h *ChatHandler) executeToolCalls(sess *models.Session, calls []services.To
 			}
 			date := strField(call.Input, "date")
 			startTime := strField(call.Input, "startTime")
-			if date != "" && startTime != "" && sess.MatchedDoctor != nil && services.IsSlotBooked(sess.MatchedDoctor.ID, date, startTime) {
-				log.Printf("[chat] session=%s WARN select_slot: slot already booked doctor=%s date=%s time=%s",
-					sess.ID, sess.MatchedDoctor.ID, date, startTime)
-			}
-			if date != "" && startTime != "" && sess.MatchedDoctor != nil && !services.IsSlotBooked(sess.MatchedDoctor.ID, date, startTime) {
-				endTime := services.GenerateAvailability(sess.MatchedDoctor.ID)
+			if date != "" && startTime != "" && sess.MatchedDoctor != nil {
+				if services.IsSlotBooked(sess.MatchedDoctor.ID, date, startTime) {
+					log.Printf("[chat] session=%s WARN select_slot: slot already booked doctor=%s date=%s time=%s",
+						sess.ID, sess.MatchedDoctor.ID, date, startTime)
+					break
+				}
+				slots := services.GenerateAvailability(sess.MatchedDoctor.ID)
 				var endT string
-				for _, s := range endTime {
+				var slotAvailable bool
+				for _, s := range slots {
 					if s.Date == date && s.StartTime == startTime {
 						endT = s.EndTime
+						slotAvailable = s.Available
 						break
 					}
+				}
+				if !slotAvailable {
+					log.Printf("[chat] session=%s WARN select_slot: slot not available doctor=%s date=%s time=%s",
+						sess.ID, sess.MatchedDoctor.ID, date, startTime)
+					break
 				}
 				sess.SelectedSlot = &models.TimeSlot{
 					DoctorID:  sess.MatchedDoctor.ID,

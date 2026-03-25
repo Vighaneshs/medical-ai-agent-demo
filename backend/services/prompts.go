@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"kyron-medical/models"
 )
@@ -139,7 +140,8 @@ When the patient says yes, call confirm_doctor with the doctorId (in the same re
 		availableSlots := []string{}
 		for _, s := range slots {
 			if s.Available {
-				availableSlots = append(availableSlots, fmt.Sprintf("%s %s-%s", s.Date, s.StartTime, s.EndTime))
+				t, _ := time.Parse("2006-01-02", s.Date)
+				availableSlots = append(availableSlots, fmt.Sprintf("%s %s %s-%s", t.Format("Monday"), s.Date, s.StartTime, s.EndTime))
 			}
 		}
 		availabilityStr := strings.Join(availableSlots, "\n")
@@ -150,7 +152,7 @@ When the patient says yes, call confirm_doctor with the doctorId (in the same re
 		sb.WriteString(fmt.Sprintf(`CURRENT TASK — APPOINTMENT SCHEDULING:
 Patient is scheduling with %s (%s).
 
-AVAILABLE SLOTS (format: YYYY-MM-DD HH:MM-HH:MM):
+AVAILABLE SLOTS (format: Weekday YYYY-MM-DD HH:MM-HH:MM):
 %s
 
 Present slots in a friendly, conversational way — grouped by week. Example:

@@ -19,7 +19,13 @@ func HandleAvailability(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slots := services.GenerateAvailability(doctorID)
+	all := services.GenerateAvailability(doctorID)
+	available := make([]interface{}, 0, len(all))
+	for _, s := range all {
+		if s.Available {
+			available = append(available, s)
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"slots": slots})
+	json.NewEncoder(w).Encode(map[string]interface{}{"slots": available})
 }
