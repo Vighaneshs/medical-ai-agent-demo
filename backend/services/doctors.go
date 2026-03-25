@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"kyron-medical/models"
@@ -59,12 +60,39 @@ var Doctors = []models.Doctor{
 
 // GetDoctorByID returns a doctor by ID, or nil if not found.
 func GetDoctorByID(id string) *models.Doctor {
+	// Exact match first
 	for i := range Doctors {
 		if Doctors[i].ID == id {
 			return &Doctors[i]
 		}
 	}
+	// Normalize: lowercase, replace underscores/spaces/dots with dashes, collapse repeats
+	r := strings.NewReplacer("_", "-", " ", "-", ".", "")
+	norm := strings.ToLower(r.Replace(id))
+	for i := range Doctors {
+		if Doctors[i].ID == norm {
+			return &Doctors[i]
+		}
+	}
+	// Last-name match — handles "dr-david-chen", "david-chen", "chen", etc.
+	// Doctor names are "Dr. Firstname Lastname" → last word is the last name.
+	for i := range Doctors {
+		parts := strings.Fields(Doctors[i].Name)
+		lastName := strings.ToLower(parts[len(parts)-1]) // e.g. "chen"
+		if strings.Contains(norm, lastName) {
+			return &Doctors[i]
+		}
+	}
 	return nil
+}
+
+// DoctorIDs returns all valid doctor IDs — used in debug logs.
+func DoctorIDs() []string {
+	ids := make([]string, len(Doctors))
+	for i, d := range Doctors {
+		ids[i] = d.ID
+	}
+	return ids
 }
 
 // ─── Availability Generator ───────────────────────────────────────────────────

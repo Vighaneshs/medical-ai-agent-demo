@@ -14,6 +14,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { DoctorCard } from '@/components/DoctorCard';
 import { AppointmentSlots } from '@/components/AppointmentSlots';
 import { ConfirmationModal } from '@/components/ConfirmationModal';
+import { IntakeForm } from '@/components/IntakeForm';
 
 function getOrCreateSessionId(): string {
   if (typeof window === 'undefined') return uuidv4();
@@ -131,7 +132,7 @@ export function ChatInterface() {
   }, [handleSend]);
 
   const handleConfirmBooking = useCallback((smsOptIn: boolean) => {
-    const suffix = smsOptIn ? ', and yes to the SMS reminder' : '';
+    const suffix = smsOptIn ? ', and yes please send an SMS reminder' : ', no SMS reminder needed';
     handleSend(`Yes, please confirm my booking${suffix}`);
   }, [handleSend]);
 
@@ -203,6 +204,20 @@ export function ChatInterface() {
           ) : isStreaming ? (
             <TypingIndicator key="typing" />
           ) : null}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {sessionState === 'INTAKE' && !isStreaming && (
+            <motion.div
+              key="intake-form"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              transition={{ duration: 0.2 }}
+            >
+              <IntakeForm onSubmit={handleSend} disabled={isStreaming} />
+            </motion.div>
+          )}
         </AnimatePresence>
 
         <AnimatePresence>

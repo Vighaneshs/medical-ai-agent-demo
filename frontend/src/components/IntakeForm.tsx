@@ -1,0 +1,190 @@
+'use client';
+
+import { useState } from 'react';
+
+interface IntakeFormProps {
+  onSubmit: (message: string) => void;
+  disabled?: boolean;
+}
+
+interface FormFields {
+  firstName: string;
+  lastName: string;
+  dob: string;
+  phone: string;
+  email: string;
+  reason: string;
+}
+
+const EMPTY: FormFields = {
+  firstName: '', lastName: '', dob: '', phone: '', email: '', reason: '',
+};
+
+const inputStyle = {
+  background: 'rgba(255,255,255,0.05)',
+  border: '1px solid var(--glass-border)',
+  borderRadius: 10,
+  color: 'var(--text)',
+  padding: '8px 12px',
+  fontSize: 13,
+  width: '100%',
+  outline: 'none',
+};
+
+const errorStyle = {
+  ...inputStyle,
+  border: '1px solid var(--danger)',
+};
+
+export function IntakeForm({ onSubmit, disabled }: IntakeFormProps) {
+  const [fields, setFields] = useState<FormFields>(EMPTY);
+  const [touched, setTouched] = useState<Partial<Record<keyof FormFields, boolean>>>({});
+
+  function set(key: keyof FormFields, value: string) {
+    setFields(prev => ({ ...prev, [key]: value }));
+  }
+
+  function touch(key: keyof FormFields) {
+    setTouched(prev => ({ ...prev, [key]: true }));
+  }
+
+  function hasError(key: keyof FormFields) {
+    return touched[key] && !fields[key].trim();
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    // Mark all fields as touched to show errors
+    const allTouched: Partial<Record<keyof FormFields, boolean>> = {};
+    (Object.keys(EMPTY) as (keyof FormFields)[]).forEach(k => { allTouched[k] = true; });
+    setTouched(allTouched);
+
+    if ((Object.keys(EMPTY) as (keyof FormFields)[]).some(k => !fields[k].trim())) return;
+
+    const text =
+      `My name is ${fields.firstName.trim()} ${fields.lastName.trim()}, ` +
+      `date of birth ${fields.dob}, ` +
+      `phone ${fields.phone.trim()}, ` +
+      `email ${fields.email.trim()}. ` +
+      `Reason for visit: ${fields.reason.trim()}.`;
+
+    onSubmit(text);
+  }
+
+  return (
+    <div
+      className="glass-sm mx-1"
+      style={{ padding: '16px 18px', maxWidth: 480 }}
+    >
+      <p className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+        Patient Information
+      </p>
+
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        {/* Row 1: First + Last name */}
+        <div className="flex gap-2">
+          <div className="flex flex-col gap-1 flex-1">
+            <label className="text-xs" style={{ color: 'var(--text-muted)' }}>First name</label>
+            <input
+              type="text"
+              placeholder="Jane"
+              value={fields.firstName}
+              onChange={e => set('firstName', e.target.value)}
+              onBlur={() => touch('firstName')}
+              disabled={disabled}
+              style={hasError('firstName') ? errorStyle : inputStyle}
+            />
+          </div>
+          <div className="flex flex-col gap-1 flex-1">
+            <label className="text-xs" style={{ color: 'var(--text-muted)' }}>Last name</label>
+            <input
+              type="text"
+              placeholder="Smith"
+              value={fields.lastName}
+              onChange={e => set('lastName', e.target.value)}
+              onBlur={() => touch('lastName')}
+              disabled={disabled}
+              style={hasError('lastName') ? errorStyle : inputStyle}
+            />
+          </div>
+        </div>
+
+        {/* Row 2: DOB + Phone */}
+        <div className="flex gap-2">
+          <div className="flex flex-col gap-1 flex-1">
+            <label className="text-xs" style={{ color: 'var(--text-muted)' }}>Date of birth</label>
+            <input
+              type="date"
+              value={fields.dob}
+              onChange={e => set('dob', e.target.value)}
+              onBlur={() => touch('dob')}
+              disabled={disabled}
+              style={{
+                ...(hasError('dob') ? errorStyle : inputStyle),
+                colorScheme: 'dark',
+              }}
+            />
+          </div>
+          <div className="flex flex-col gap-1 flex-1">
+            <label className="text-xs" style={{ color: 'var(--text-muted)' }}>Phone</label>
+            <input
+              type="tel"
+              placeholder="(555) 000-0000"
+              value={fields.phone}
+              onChange={e => set('phone', e.target.value)}
+              onBlur={() => touch('phone')}
+              disabled={disabled}
+              style={hasError('phone') ? errorStyle : inputStyle}
+            />
+          </div>
+        </div>
+
+        {/* Row 3: Email */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs" style={{ color: 'var(--text-muted)' }}>Email</label>
+          <input
+            type="email"
+            placeholder="jane@example.com"
+            value={fields.email}
+            onChange={e => set('email', e.target.value)}
+            onBlur={() => touch('email')}
+            disabled={disabled}
+            style={hasError('email') ? errorStyle : inputStyle}
+          />
+        </div>
+
+        {/* Row 4: Reason */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs" style={{ color: 'var(--text-muted)' }}>Reason for visit</label>
+          <textarea
+            rows={3}
+            placeholder="Describe your symptoms or reason…"
+            value={fields.reason}
+            onChange={e => set('reason', e.target.value)}
+            onBlur={() => touch('reason')}
+            disabled={disabled}
+            style={{
+              ...(hasError('reason') ? errorStyle : inputStyle),
+              resize: 'none',
+            }}
+          />
+        </div>
+
+        <div className="flex justify-end mt-1">
+          <button
+            type="submit"
+            disabled={disabled}
+            className="px-5 py-2 rounded-xl text-sm font-semibold transition-opacity"
+            style={{
+              background: 'linear-gradient(135deg, #577DE8, #48ACF0)',
+              color: '#fff',
+              opacity: disabled ? 0.5 : 1,
+            }}
+          >
+            Continue →
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}

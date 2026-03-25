@@ -46,7 +46,7 @@ func (g *GeminiService) Stream(
 	contents := msgsToGeminiContents(messages)
 	config := &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(systemPrompt, "user"),
-		MaxOutputTokens:   1024,
+		MaxOutputTokens:   4096,
 		Tools:             []*genai.Tool{buildGeminiTools()},
 	}
 
@@ -60,8 +60,19 @@ func (g *GeminiService) Stream(
 	}
 	log.Printf("[gemini] starting stream: model=%s contents=%d", geminiModel(), len(contents))
 
+	// estimate input size for diagnostics
+	inputChars := len(systemPrompt)
+	for _, c := range contents {
+		for _, p := range c.Parts {
+			inputChars += len(p.Text)
+		}
+	}
+	log.Printf("[gemini] input estimate: system_prompt=%d chars, history_turns=%d, total_chars≈%d (~%d tokens)",
+		len(systemPrompt), len(contents), inputChars, inputChars/4)
+
 	var allParts []*genai.Part
 	respCount := 0
+	var lastFinishReason string
 
 	for resp, err := range g.client.Models.GenerateContentStream(ctx, geminiModel(), contents, config) {
 		if err != nil {
@@ -79,6 +90,9 @@ func (g *GeminiService) Stream(
 		if len(resp.Candidates) == 0 {
 			log.Printf("[gemini] resp #%d: no candidates", respCount)
 			continue
+		}
+		if fr := string(resp.Candidates[0].FinishReason); fr != "" && fr != "0" {
+			lastFinishReason = fr
 		}
 		if resp.Candidates[0].Content == nil {
 			log.Printf("[gemini] resp #%d: nil content (finish_reason=%v)", respCount, resp.Candidates[0].FinishReason)
@@ -109,7 +123,14 @@ func (g *GeminiService) Stream(
 			}
 		}
 	}
-	log.Printf("[gemini] stream complete: %d responses, %d total parts", respCount, len(allParts))
+	log.Printf("[gemini] stream complete: %d responses, %d total parts, finish_reason=%q",
+		respCount, len(allParts), lastFinishReason)
+	if lastFinishReason == "MAX_TOKENS" {
+		log.Printf("[gemini] WARN: hit MAX_TOKENS — response was cut off. Increase MaxOutputTokens or shorten the prompt.")
+	}
+	if lastFinishReason == "SAFETY" {
+		log.Printf("[gemini] WARN: response blocked by safety filters.")
+	}
 
 	var calls []ToolCallResult
 	for _, part := range allParts {
@@ -124,7 +145,25 @@ func (g *GeminiService) Stream(
 			})
 		}
 	}
-	log.Printf("[gemini] tool calls extracted: %d", len(calls))
+	hasFuncCall := len(calls) > 0
+	hasText := false
+	for _, p := range allParts {
+		if p.Text != "" {
+			hasText = true
+			break
+		}
+	}
+	log.Printf("[gemini] result: tool_calls=%d has_text=%v — %s",
+		len(calls), hasText,
+		func() string {
+			if !hasFuncCall && !hasText {
+				return "WARNING: no text and no tool calls produced"
+			}
+			if !hasFuncCall {
+				return "text only (no tool call)"
+			}
+			return "tool call(s) produced"
+		}())
 	toolResults <- calls
 }
 

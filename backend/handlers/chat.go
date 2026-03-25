@@ -55,6 +55,7 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	h.sessions.AppendMessage(sess, "user", req.Message)
 
 	systemPrompt := services.Build(sess)
+	log.Printf("[chat] session=%s system_prompt_len=%d preview=%q", sess.ID, len(systemPrompt), truncateStr(systemPrompt, 200))
 	ctx := r.Context()
 
 	textChunks := make(chan string, 100)
@@ -76,7 +77,8 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "data: %s\n\n", data)
 		flusher.Flush()
 	}
-	log.Printf("[chat] session=%s stream done: %d chunks, text_len=%d", sess.ID, chunkCount, len(assistantText))
+	log.Printf("[chat] session=%s stream done: %d chunks, text_len=%d response=%q",
+		sess.ID, chunkCount, len(assistantText), truncateStr(assistantText, 300))
 
 	calls := <-toolResults
 	log.Printf("[chat] session=%s tool_calls=%d", sess.ID, len(calls))
@@ -86,6 +88,34 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 
 	newState := h.executeToolCalls(sess, calls, r)
 	log.Printf("[chat] session=%s new_state=%s", sess.ID, newState)
+
+	// Gemini often makes tool-only turns (no text). Loop up to 3 times until we
+	// get visible text or run out of tool-only continuations to follow.
+	for attempt := 1; attempt <= 3 && assistantText == "" && len(calls) > 0; attempt++ {
+		if ctx.Err() != nil {
+			return
+		}
+		log.Printf("[chat] session=%s auto-continue attempt=%d state=%s", sess.ID, attempt, sess.State)
+		sp := services.Build(sess)
+		tc := make(chan string, 100)
+		tr := make(chan []services.ToolCallResult, 1)
+		go services.AI.Stream(ctx, sp, sess.Messages, tc, tr)
+		for chunk := range tc {
+			if ctx.Err() != nil {
+				return
+			}
+			assistantText += chunk
+			data, _ := json.Marshal(models.SSEChunk{Text: chunk})
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+		calls = <-tr
+		if len(calls) > 0 {
+			log.Printf("[chat] session=%s continuation attempt=%d produced %d tool calls", sess.ID, attempt, len(calls))
+			newState = h.executeToolCalls(sess, calls, r)
+		}
+		log.Printf("[chat] session=%s continuation attempt=%d done: text_len=%d new_state=%s", sess.ID, attempt, len(assistantText), newState)
+	}
 
 	if assistantText != "" {
 		h.sessions.AppendMessage(sess, "assistant", assistantText)
@@ -112,8 +142,11 @@ func (h *ChatHandler) executeToolCalls(sess *models.Session, calls []services.To
 	for _, call := range calls {
 		switch call.ToolName {
 		case "begin_intake":
-			if sess.State == models.StateGreeting {
+			if sess.State == models.StateGreeting || sess.State == models.StateBooked ||
+				sess.State == models.StatePrescription || sess.State == models.StateHours {
 				sess.State = models.StateIntake
+			} else {
+				log.Printf("[chat] session=%s WARN begin_intake: ignored in state=%s", sess.ID, sess.State)
 			}
 
 		case "begin_prescription":
@@ -123,6 +156,10 @@ func (h *ChatHandler) executeToolCalls(sess *models.Session, calls []services.To
 			sess.State = models.StateHours
 
 		case "collect_intake":
+			if sess.State != models.StateIntake {
+				log.Printf("[chat] session=%s WARN collect_intake: ignored in state=%s (expected INTAKE)", sess.ID, sess.State)
+				break
+			}
 			sess.PatientInfo = models.PatientInfo{
 				FirstName:      strField(call.Input, "firstName"),
 				LastName:       strField(call.Input, "lastName"),
@@ -135,16 +172,31 @@ func (h *ChatHandler) executeToolCalls(sess *models.Session, calls []services.To
 			sess.State = models.StateMatching
 
 		case "confirm_doctor":
+			if sess.State != models.StateMatching {
+				log.Printf("[chat] session=%s WARN confirm_doctor: ignored in state=%s (expected MATCHING)", sess.ID, sess.State)
+				break
+			}
 			doctorID := strField(call.Input, "doctorId")
 			if doc := services.GetDoctorByID(doctorID); doc != nil {
 				sess.MatchedDoctor = doc
 				sess.State = models.StateScheduling
+			} else {
+				log.Printf("[chat] session=%s WARN confirm_doctor: unknown doctorId=%q — state stays %s (valid IDs: %v)",
+					sess.ID, doctorID, sess.State, services.DoctorIDs())
 			}
 
 		case "select_slot":
+			if sess.State != models.StateScheduling {
+				log.Printf("[chat] session=%s WARN select_slot: ignored in state=%s (expected SCHEDULING)", sess.ID, sess.State)
+				break
+			}
 			date := strField(call.Input, "date")
 			startTime := strField(call.Input, "startTime")
-			if date != "" && startTime != "" && !services.IsSlotBooked(sess.MatchedDoctor.ID, date, startTime) {
+			if date != "" && startTime != "" && sess.MatchedDoctor != nil && services.IsSlotBooked(sess.MatchedDoctor.ID, date, startTime) {
+				log.Printf("[chat] session=%s WARN select_slot: slot already booked doctor=%s date=%s time=%s",
+					sess.ID, sess.MatchedDoctor.ID, date, startTime)
+			}
+			if date != "" && startTime != "" && sess.MatchedDoctor != nil && !services.IsSlotBooked(sess.MatchedDoctor.ID, date, startTime) {
 				endTime := services.GenerateAvailability(sess.MatchedDoctor.ID)
 				var endT string
 				for _, s := range endTime {
@@ -164,36 +216,53 @@ func (h *ChatHandler) executeToolCalls(sess *models.Session, calls []services.To
 			}
 
 		case "confirm_booking":
-			if sess.State == models.StateConfirming && sess.SelectedSlot != nil && sess.MatchedDoctor != nil {
-				smsOptIn := boolField(call.Input, "smsOptIn")
-				sess.PatientInfo.SMSOptIn = smsOptIn
-
-				apptID := uuid.New().String()
-				appt := &models.Appointment{
-					ID:        apptID,
-					SessionID: sess.ID,
-					Doctor:    *sess.MatchedDoctor,
-					Slot:      *sess.SelectedSlot,
-					Patient:   sess.PatientInfo,
-					BookedAt:  time.Now(),
-				}
-				sess.Appointment = appt
-				sess.State = models.StateBooked
-
-				services.BookSlot(sess.SelectedSlot.DoctorID, sess.SelectedSlot.Date, sess.SelectedSlot.StartTime)
-
-				go services.SendConfirmationEmail(appt)
-				if smsOptIn {
-					go services.SendConfirmationSMS(appt)
-				}
-				go services.ScheduleReminder(appt)
+			log.Printf("[chat] session=%s confirm_booking: state=%s matchedDoctor=%v selectedSlot=%v",
+				sess.ID, sess.State, sess.MatchedDoctor != nil, sess.SelectedSlot != nil)
+			if sess.State != models.StateConfirming {
+				log.Printf("[chat] session=%s WARN confirm_booking: ignored in state=%s (expected CONFIRMING)", sess.ID, sess.State)
+				break
 			}
+			if sess.SelectedSlot == nil || sess.MatchedDoctor == nil {
+				log.Printf("[chat] session=%s WARN confirm_booking: nil pointer — doctor=%v slot=%v — cannot book",
+					sess.ID, sess.MatchedDoctor, sess.SelectedSlot)
+				break
+			}
+			smsOptIn := boolField(call.Input, "smsOptIn")
+			sess.PatientInfo.SMSOptIn = smsOptIn
+
+			apptID := uuid.New().String()
+			appt := &models.Appointment{
+				ID:        apptID,
+				SessionID: sess.ID,
+				Doctor:    *sess.MatchedDoctor,
+				Slot:      *sess.SelectedSlot,
+				Patient:   sess.PatientInfo,
+				BookedAt:  time.Now(),
+			}
+			sess.Appointment = appt
+			sess.State = models.StateBooked
+
+			services.BookSlot(sess.SelectedSlot.DoctorID, sess.SelectedSlot.Date, sess.SelectedSlot.StartTime)
+
+			go services.SendConfirmationEmail(appt)
+			if smsOptIn {
+				go services.SendConfirmationSMS(appt)
+			}
+			go services.ScheduleReminder(appt)
+			log.Printf("[chat] session=%s confirm_booking: BOOKED appt=%s smsOptIn=%v", sess.ID, apptID, smsOptIn)
 
 		case "log_prescription_request":
 			sess.State = models.StatePrescription
 		}
 	}
 	return sess.State
+}
+
+func truncateStr(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 func strField(m map[string]interface{}, key string) string {
