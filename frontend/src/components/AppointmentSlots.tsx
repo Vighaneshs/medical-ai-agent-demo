@@ -8,6 +8,8 @@ import { TimeSlot } from '@/types';
 interface Props {
   doctorId: string;
   onSelect: (slot: TimeSlot) => void;
+  focusDate?: string;
+  onDatesLoaded?: (dates: string[]) => void;
 }
 
 function groupByDate(slots: TimeSlot[]): Record<string, TimeSlot[]> {
@@ -30,7 +32,7 @@ function formatTime(t: string): string {
   return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
 }
 
-export function AppointmentSlots({ doctorId, onSelect }: Props) {
+export function AppointmentSlots({ doctorId, onSelect, focusDate, onDatesLoaded }: Props) {
   const [slots, setSlots] = useState<TimeSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeDate, setActiveDate] = useState<string>('');
@@ -41,9 +43,17 @@ export function AppointmentSlots({ doctorId, onSelect }: Props) {
         const available = data.filter(s => s.available);
         setSlots(available);
         if (available.length > 0) setActiveDate(available[0].date);
+        onDatesLoaded?.(available.map(s => s.date));
       })
       .finally(() => setLoading(false));
-  }, [doctorId]);
+  }, [doctorId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync the active date tab when the parent identifies a date being discussed
+  useEffect(() => {
+    if (focusDate && slots.some(s => s.date === focusDate)) {
+      setActiveDate(focusDate);
+    }
+  }, [focusDate, slots]);
 
   const grouped = groupByDate(slots);
   const dates = Object.keys(grouped).slice(0, 10);

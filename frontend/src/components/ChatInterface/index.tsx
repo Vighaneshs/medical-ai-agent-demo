@@ -37,6 +37,8 @@ export function ChatInterface() {
   const [doctorsMap, setDoctorsMap] = useState<Record<string, Doctor>>({});
   const [patientFirstName, setPatientFirstName] = useState('');
   const [sendError, setSendError] = useState(false);
+  const [availableSlotDates, setAvailableSlotDates] = useState<string[]>([]);
+  const [focusSlotDate, setFocusSlotDate] = useState('');
   const lastMessageRef = useRef<string>('');
 
   const sessionId = useRef(getOrCreateSessionId());
@@ -170,6 +172,31 @@ export function ChatInterface() {
     }
   }, [messages, patientFirstName]);
 
+  // Sync slot date tab when AI discusses a specific date during SCHEDULING
+  useEffect(() => {
+    if (sessionState !== 'SCHEDULING' || availableSlotDates.length === 0) return;
+    const lastAI = [...messages].reverse().find(m => m.role === 'assistant');
+    if (!lastAI) return;
+
+    // 1. Direct ISO date match (AI often echoes the YYYY-MM-DD from its context)
+    const isoMatch = lastAI.content.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+    if (isoMatch && availableSlotDates.includes(isoMatch[1])) {
+      setFocusSlotDate(isoMatch[1]);
+      return;
+    }
+
+    // 2. "Month Day" natural-language match (e.g. "March 31" or "Apr 1")
+    for (const date of availableSlotDates) {
+      const d = new Date(date + 'T00:00:00');
+      const long = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });   // "March 31"
+      const short = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); // "Mar 31"
+      if (lastAI.content.includes(long) || lastAI.content.includes(short)) {
+        setFocusSlotDate(date);
+        return;
+      }
+    }
+  }, [messages, sessionState, availableSlotDates]);
+
   const showQuickReplies =
     sessionState === 'GREETING' &&
     !isStreaming &&
@@ -182,7 +209,7 @@ export function ChatInterface() {
   ];
 
   // Show scheduling overlays only when not currently streaming a response
-  const showSchedulingOverlay = sessionState === 'SCHEDULING' && matchedDoctorId && !isStreaming;
+  const showSchedulingOverlay = sessionState === 'SCHEDULING' && matchedDoctorId && !isStreaming && !selectedSlot;
   const showConfirmingOverlay = sessionState === 'CONFIRMING' && matchedDoctor && selectedSlot && !isStreaming;
   const showMatchingButtons = sessionState === 'MATCHING' && matchedDoctorId && !isStreaming;
 
@@ -362,6 +389,8 @@ export function ChatInterface() {
             key={`slots-${matchedDoctorId}`}
             doctorId={matchedDoctorId}
             onSelect={handleSlotSelect}
+            focusDate={focusSlotDate}
+            onDatesLoaded={setAvailableSlotDates}
           />
         )}
       </AnimatePresence>
