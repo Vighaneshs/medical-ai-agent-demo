@@ -1,27 +1,11 @@
 'use client';
 
+import ReactMarkdown from 'react-markdown';
 import { motion } from 'framer-motion';
 import { ChatMessage } from '@/types';
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function renderContent(content: string) {
-  // Bold: **text**
-  const parts = content.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i}>{part.slice(2, -2)}</strong>;
-    }
-    // Handle line breaks
-    return part.split('\n').map((line, j, arr) => (
-      <span key={`${i}-${j}`}>
-        {line}
-        {j < arr.length - 1 && <br />}
-      </span>
-    ));
-  });
 }
 
 export function MessageBubble({ message }: { message: ChatMessage }) {
@@ -62,8 +46,33 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
           {message.isEmergency && (
             <div className="text-lg mb-1">⚠️</div>
           )}
-          <div style={{ color: isUser ? '#fff' : 'rgba(255,255,255,0.92)' }}>
-            {renderContent(message.content)}
+          <div
+            className="prose-chat"
+            style={{ color: isUser ? '#fff' : 'rgba(255,255,255,0.92)' }}
+          >
+            {isUser ? (
+              message.content
+            ) : (
+              <ReactMarkdown
+                components={{
+                  p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+                  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                  em: ({ children }) => <em className="italic">{children}</em>,
+                  ul: ({ children }) => <ul className="list-disc pl-4 my-1 space-y-0.5">{children}</ul>,
+                  ol: ({ children }) => <ol className="list-decimal pl-4 my-1 space-y-0.5">{children}</ol>,
+                  li: ({ children }) => <li>{children}</li>,
+                  h1: ({ children }) => <p className="font-semibold mb-1">{children}</p>,
+                  h2: ({ children }) => <p className="font-semibold mb-1">{children}</p>,
+                  h3: ({ children }) => <p className="font-medium mb-0.5">{children}</p>,
+                  hr: () => <hr className="border-white/20 my-2" />,
+                  code: ({ children }) => (
+                    <code className="bg-white/10 px-1 rounded text-xs font-mono">{children}</code>
+                  ),
+                }}
+              >
+                {message.content}
+              </ReactMarkdown>
+            )}
           </div>
         </div>
         <span className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>

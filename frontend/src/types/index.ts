@@ -33,6 +33,25 @@ export interface TimeSlot {
   available: boolean;
 }
 
+export interface PatientInfo {
+  firstName: string;
+  lastName: string;
+  dob: string;
+  phone: string;
+  email: string;
+  reasonForVisit: string;
+  smsOptIn: boolean;
+}
+
+export interface Appointment {
+  id: string;
+  sessionId: string;
+  doctor: Doctor;
+  slot: TimeSlot;
+  patient: PatientInfo;
+  bookedAt: string;
+}
+
 export interface SSEChunk {
   text?: string;
   emergency?: boolean;

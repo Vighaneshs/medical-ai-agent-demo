@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
 import { ChatMessage, Doctor, SessionState, TimeSlot } from '@/types';
 import { sendMessage, getDoctors } from '@/lib/api';
+import { SESSION_KEY } from '@/lib/constants';
 import { MessageBubble } from './MessageBubble';
 import { TypingIndicator } from './TypingIndicator';
 import { InputBar } from '@/components/InputBar';
@@ -13,8 +14,6 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { DoctorCard } from '@/components/DoctorCard';
 import { AppointmentSlots } from '@/components/AppointmentSlots';
 import { ConfirmationModal } from '@/components/ConfirmationModal';
-
-const SESSION_KEY = 'kyron_session_id';
 
 function getOrCreateSessionId(): string {
   if (typeof window === 'undefined') return uuidv4();
@@ -95,6 +94,7 @@ export function ChatInterface() {
           isEmergency = true;
         }
         if (chunk.done) {
+          console.debug('[chat] done', chunk);
           if (chunk.newState) setSessionState(chunk.newState as SessionState);
           if (chunk.doctorId) setMatchedDoctorId(chunk.doctorId);
           if (chunk.selectedSlot) setSelectedSlot(chunk.selectedSlot);
@@ -104,15 +104,17 @@ export function ChatInterface() {
       accumulated = "I'm having trouble connecting right now. Please try again.";
     }
 
-    const aiMsg: ChatMessage = {
-      id: uuidv4(),
-      role: 'assistant',
-      content: accumulated,
-      createdAt: new Date().toISOString(),
-      isEmergency,
-    };
+    if (accumulated) {
+      const aiMsg: ChatMessage = {
+        id: uuidv4(),
+        role: 'assistant',
+        content: accumulated,
+        createdAt: new Date().toISOString(),
+        isEmergency,
+      };
+      setMessages(prev => [...prev, aiMsg]);
+    }
 
-    setMessages(prev => [...prev, aiMsg]);
     setStreamingText('');
     setIsStreaming(false);
   }, [isStreaming, messages.length]);
@@ -141,6 +143,17 @@ export function ChatInterface() {
       if (nameMatch) setPatientFirstName(nameMatch[1]);
     }
   }, [messages, patientFirstName]);
+
+  const showQuickReplies =
+    sessionState === 'GREETING' &&
+    !isStreaming &&
+    messages.some(m => m.role === 'assistant');
+
+  const quickReplies = [
+    { label: 'Schedule an appointment', message: 'I want to schedule an appointment with a specialist' },
+    { label: 'Prescription refill', message: 'I need a prescription refill' },
+    { label: 'Office hours & location', message: 'What are your office hours and location?' },
+  ];
 
   // Show scheduling overlays only when not currently streaming a response
   const showSchedulingOverlay = sessionState === 'SCHEDULING' && matchedDoctorId && !isStreaming;
@@ -177,21 +190,55 @@ export function ChatInterface() {
           {messages.map(msg => (
             <MessageBubble key={msg.id} message={msg} />
           ))}
+          {isStreaming && streamingText ? (
+            <MessageBubble
+              key="streaming"
+              message={{
+                id: 'streaming',
+                role: 'assistant',
+                content: streamingText,
+                createdAt: new Date().toISOString(),
+              }}
+            />
+          ) : isStreaming ? (
+            <TypingIndicator key="typing" />
+          ) : null}
         </AnimatePresence>
 
-        {isStreaming && streamingText && (
-          <MessageBubble
-            message={{
-              id: 'streaming',
-              role: 'assistant',
-              content: streamingText,
-              createdAt: new Date().toISOString(),
-            }}
-          />
-        )}
-
         <AnimatePresence>
-          {isStreaming && !streamingText && <TypingIndicator />}
+          {showQuickReplies && (
+            <motion.div
+              key="quick-replies"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.2 }}
+              className="flex flex-wrap gap-2 px-1"
+            >
+              {quickReplies.map(({ label, message }) => (
+                <button
+                  key={label}
+                  onClick={() => handleSend(message)}
+                  className="px-4 py-2 rounded-full text-sm font-medium border transition-all"
+                  style={{
+                    background: 'rgba(87, 125, 232, 0.08)',
+                    borderColor: 'rgba(87, 125, 232, 0.35)',
+                    color: '#7BA4EF',
+                  }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(87, 125, 232, 0.18)';
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(87, 125, 232, 0.6)';
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(87, 125, 232, 0.08)';
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(87, 125, 232, 0.35)';
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </motion.div>
+          )}
         </AnimatePresence>
 
         <div ref={bottomRef} />

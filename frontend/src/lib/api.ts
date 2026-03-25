@@ -29,13 +29,15 @@ export async function sendMessage(
     const lines = buffer.split('\n');
     buffer = lines.pop() ?? '';
 
-    for (const line of lines) {
+    for (const rawLine of lines) {
+      const line = rawLine.trimEnd(); // strip \r and trailing whitespace
       if (!line.startsWith('data: ')) continue;
+      const payload = line.slice(6);
       try {
-        const chunk: SSEChunk = JSON.parse(line.slice(6));
+        const chunk: SSEChunk = JSON.parse(payload);
         onChunk(chunk);
       } catch {
-        // skip malformed
+        console.warn('[SSE] failed to parse chunk:', payload);
       }
     }
   }
@@ -53,6 +55,12 @@ export async function getDoctors() {
   if (!res.ok) throw new Error('Failed to fetch doctors');
   const data = await res.json();
   return data.doctors;
+}
+
+export async function getAppointment(sessionId: string) {
+  const res = await fetch(`${API_URL}/api/appointment?sessionId=${sessionId}`);
+  if (!res.ok) throw new Error('No appointment found');
+  return res.json();
 }
 
 export async function initiateVoiceCall(sessionId: string) {

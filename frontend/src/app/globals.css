@@ -12,6 +12,7 @@
   --text-muted:    #8892a4;
   --glass-bg:      rgba(87, 125, 232, 0.07);
   --glass-border:  rgba(72, 172, 240, 0.22);
+  --nav-height:    52px;
 }
 
 * {
