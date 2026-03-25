@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { SESSION_KEY, USERNAME_KEY } from '@/lib/constants';
+import { SESSION_KEY, USERNAME_KEY, DEMO_PASSWORD } from '@/lib/constants';
 
 export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   // Already logged in → skip to chat
@@ -21,6 +22,10 @@ export default function LoginPage() {
     const trimmed = username.trim();
     if (!trimmed) {
       setError('Please enter a name to continue.');
+      return;
+    }
+    if (password !== DEMO_PASSWORD) {
+      setError('Incorrect password.');
       return;
     }
     const sessionId = 'user_' + trimmed.toLowerCase();
@@ -67,6 +72,24 @@ export default function LoginPage() {
                 color: 'var(--text)',
               }}
             />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+              Access password
+            </label>
+            <input
+              type="password"
+              placeholder="Enter demo password"
+              value={password}
+              onChange={e => { setPassword(e.target.value); setError(''); }}
+              className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
+              style={{
+                background: 'rgba(255,255,255,0.05)',
+                border: `1px solid ${error ? 'var(--danger)' : 'var(--glass-border)'}`,
+                color: 'var(--text)',
+              }}
+            />
             {error && (
               <p className="text-xs" style={{ color: 'var(--danger)' }}>{error}</p>
             )}
@@ -82,7 +105,7 @@ export default function LoginPage() {
         </form>
 
         <p className="text-center text-xs" style={{ color: 'var(--text-muted)' }}>
-          No account needed. Your conversation is saved under your name.
+          Access restricted to authorised demo users.
         </p>
       </div>
     </div>

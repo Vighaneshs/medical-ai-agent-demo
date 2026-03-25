@@ -48,18 +48,52 @@ export function IntakeForm({ onSubmit, disabled }: IntakeFormProps) {
     setTouched(prev => ({ ...prev, [key]: true }));
   }
 
+  function validate(key: keyof FormFields, value: string): string | null {
+    const v = value.trim();
+    if (!v) return 'Required';
+    switch (key) {
+      case 'firstName':
+      case 'lastName':
+        if (v.length < 2) return 'Too short';
+        if (!/^[A-Za-z\s'-]+$/.test(v)) return 'Letters only';
+        break;
+      case 'dob': {
+        const d = new Date(v);
+        const today = new Date();
+        if (isNaN(d.getTime())) return 'Invalid date';
+        if (d > today) return 'Cannot be in the future';
+        if (today.getFullYear() - d.getFullYear() > 120) return 'Invalid date';
+        break;
+      }
+      case 'phone':
+        if (v.replace(/\D/g, '').length < 10) return 'At least 10 digits';
+        break;
+      case 'email':
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return 'Invalid email';
+        break;
+      case 'reason':
+        if (v.length < 5) return 'Please describe your reason';
+        break;
+    }
+    return null;
+  }
+
   function hasError(key: keyof FormFields) {
-    return touched[key] && !fields[key].trim();
+    return touched[key] && validate(key, fields[key]) !== null;
+  }
+
+  function errorMsg(key: keyof FormFields) {
+    if (!touched[key]) return null;
+    return validate(key, fields[key]);
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // Mark all fields as touched to show errors
     const allTouched: Partial<Record<keyof FormFields, boolean>> = {};
     (Object.keys(EMPTY) as (keyof FormFields)[]).forEach(k => { allTouched[k] = true; });
     setTouched(allTouched);
 
-    if ((Object.keys(EMPTY) as (keyof FormFields)[]).some(k => !fields[k].trim())) return;
+    if ((Object.keys(EMPTY) as (keyof FormFields)[]).some(k => validate(k, fields[k]) !== null)) return;
 
     const text =
       `My name is ${fields.firstName.trim()} ${fields.lastName.trim()}, ` +
@@ -94,6 +128,7 @@ export function IntakeForm({ onSubmit, disabled }: IntakeFormProps) {
               disabled={disabled}
               style={hasError('firstName') ? errorStyle : inputStyle}
             />
+            {errorMsg('firstName') && <span className="text-xs" style={{ color: 'var(--danger)' }}>{errorMsg('firstName')}</span>}
           </div>
           <div className="flex flex-col gap-1 flex-1">
             <label className="text-xs" style={{ color: 'var(--text-muted)' }}>Last name</label>
@@ -106,6 +141,7 @@ export function IntakeForm({ onSubmit, disabled }: IntakeFormProps) {
               disabled={disabled}
               style={hasError('lastName') ? errorStyle : inputStyle}
             />
+            {errorMsg('lastName') && <span className="text-xs" style={{ color: 'var(--danger)' }}>{errorMsg('lastName')}</span>}
           </div>
         </div>
 
@@ -125,6 +161,7 @@ export function IntakeForm({ onSubmit, disabled }: IntakeFormProps) {
                 colorScheme: 'dark',
               }}
             />
+            {errorMsg('dob') && <span className="text-xs" style={{ color: 'var(--danger)' }}>{errorMsg('dob')}</span>}
           </div>
           <div className="flex flex-col gap-1 flex-1">
             <label className="text-xs" style={{ color: 'var(--text-muted)' }}>Phone</label>
@@ -137,6 +174,7 @@ export function IntakeForm({ onSubmit, disabled }: IntakeFormProps) {
               disabled={disabled}
               style={hasError('phone') ? errorStyle : inputStyle}
             />
+            {errorMsg('phone') && <span className="text-xs" style={{ color: 'var(--danger)' }}>{errorMsg('phone')}</span>}
           </div>
         </div>
 
@@ -152,6 +190,7 @@ export function IntakeForm({ onSubmit, disabled }: IntakeFormProps) {
             disabled={disabled}
             style={hasError('email') ? errorStyle : inputStyle}
           />
+          {errorMsg('email') && <span className="text-xs" style={{ color: 'var(--danger)' }}>{errorMsg('email')}</span>}
         </div>
 
         {/* Row 4: Reason */}
@@ -169,6 +208,7 @@ export function IntakeForm({ onSubmit, disabled }: IntakeFormProps) {
               resize: 'none',
             }}
           />
+          {errorMsg('reason') && <span className="text-xs" style={{ color: 'var(--danger)' }}>{errorMsg('reason')}</span>}
         </div>
 
         <div className="flex justify-end mt-1">

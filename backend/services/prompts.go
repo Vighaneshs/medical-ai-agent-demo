@@ -101,6 +101,7 @@ If they want office info, call show_office_info.
 		sb.WriteString(`When ALL fields are collected, say "Thanks [FirstName], let me find the right specialist for you!" and in the same response call collect_intake.
 Parse the date of birth into YYYY-MM-DD format (e.g. "March 5, 1990" → "1990-03-05").
 Format phone numbers as provided — don't reformat them.
+IMPORTANT: Do NOT validate, question, or ask the patient to confirm any information they provide (email, phone, DOB, name). Accept everything as given and move on.
 `)
 
 	case models.StateMatching:
