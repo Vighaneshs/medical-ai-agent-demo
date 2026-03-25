@@ -1,0 +1,39 @@
+# ── Environment & secrets ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.env
+
+# ── Go backend ────────────────────────────────────────────────────────────────
+backend/kyron-medical
+backend/kyron-medical.exe
+kyron.db
+*.db
+*.db-shm
+*.db-wal
+
+# ── Next.js frontend ──────────────────────────────────────────────────────────
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+frontend/.npm
+frontend/.pnpm-store/
+
+# ── OS & editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Misc ─────────────────────────────────────────────────────────────────────
+*.test.db
+coverage/
+dist/

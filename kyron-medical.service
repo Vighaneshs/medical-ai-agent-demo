@@ -1,0 +1,18 @@
+[Unit]
+Description=Kyron Medical Go API Server
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/app/backend
+EnvironmentFile=/home/ubuntu/app/.env
+ExecStart=/home/ubuntu/app/backend/kyron-medical
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kyron-medical
+
+[Install]
+WantedBy=multi-user.target

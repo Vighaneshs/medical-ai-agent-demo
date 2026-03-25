@@ -1,0 +1,153 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg:            #121723;
+  --primary:       #577DE8;
+  --accent:        #48ACF0;
+  --success:       #2EA84A;
+  --danger:        #E85757;
+  --text:          #ffffff;
+  --text-muted:    #8892a4;
+  --glass-bg:      rgba(87, 125, 232, 0.07);
+  --glass-border:  rgba(72, 172, 240, 0.22);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Animated gradient mesh background ─────────────────────────────────────── */
+.gradient-bg {
+  background:
+    radial-gradient(ellipse at 15% 50%, rgba(87, 125, 232, 0.30) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 20%, rgba(72, 172, 240, 0.22) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 85%, rgba(46, 168, 74, 0.12) 0%, transparent 45%),
+    #121723;
+  animation: meshDrift 12s ease-in-out infinite alternate;
+}
+
+@keyframes meshDrift {
+  0%   { background-position: center; }
+  33%  { background-position: 10% 40%; }
+  66%  { background-position: 90% 60%; }
+  100% { background-position: 50% 80%; }
+}
+
+/* ── Liquid glass panels ────────────────────────────────────────────────────── */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px) saturate(1.6);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.glass-sm {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+/* ── Message bubbles ────────────────────────────────────────────────────────── */
+.bubble-ai {
+  background: rgba(72, 172, 240, 0.06);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(72, 172, 240, 0.18);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 14px 14px 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+}
+
+.bubble-user {
+  background: var(--primary);
+  border-radius: 14px 0 14px 14px;
+  box-shadow: 0 4px 16px rgba(87, 125, 232, 0.35);
+}
+
+.bubble-emergency {
+  background: rgba(232, 87, 87, 0.12);
+  border: 1px solid rgba(232, 87, 87, 0.40);
+  border-left: 3px solid var(--danger);
+  border-radius: 0 14px 14px 14px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* ── Typing indicator ───────────────────────────────────────────────────────── */
+.typing-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: typingPulse 1.4s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typingPulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.85); }
+  40%           { opacity: 1;   transform: scale(1.1);  }
+}
+
+/* ── Voice call button ──────────────────────────────────────────────────────── */
+.voice-pulse {
+  animation: voicePulse 2s ease-in-out infinite;
+}
+
+@keyframes voicePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(87, 125, 232, 0.5); }
+  50%      { box-shadow: 0 0 0 10px rgba(87, 125, 232, 0); }
+}
+
+/* ── Waveform bars ──────────────────────────────────────────────────────────── */
+.waveform-bar {
+  width: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: waveformBounce 0.8s ease-in-out infinite alternate;
+}
+.waveform-bar:nth-child(1) { animation-delay: 0s;    height: 16px; }
+.waveform-bar:nth-child(2) { animation-delay: 0.15s; height: 28px; }
+.waveform-bar:nth-child(3) { animation-delay: 0.30s; height: 20px; }
+.waveform-bar:nth-child(4) { animation-delay: 0.45s; height: 32px; }
+.waveform-bar:nth-child(5) { animation-delay: 0.60s; height: 16px; }
+
+@keyframes waveformBounce {
+  from { transform: scaleY(0.4); opacity: 0.6; }
+  to   { transform: scaleY(1.0); opacity: 1.0; }
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(72, 172, 240, 0.25); border-radius: 2px; }
+
+/* ── Status badge colors ────────────────────────────────────────────────────── */
+.badge-greeting     { background: rgba(87, 125, 232, 0.2);  color: #a0b4f5; border-color: rgba(87, 125, 232, 0.3);  }
+.badge-intake       { background: rgba(72, 172, 240, 0.2);  color: #7dd3f5; border-color: rgba(72, 172, 240, 0.3);  }
+.badge-matching     { background: rgba(72, 172, 240, 0.2);  color: #7dd3f5; border-color: rgba(72, 172, 240, 0.3);  }
+.badge-scheduling   { background: rgba(72, 172, 240, 0.2);  color: #7dd3f5; border-color: rgba(72, 172, 240, 0.3);  }
+.badge-confirming   { background: rgba(240, 168, 72, 0.2);  color: #f5c87d; border-color: rgba(240, 168, 72, 0.3);  }
+.badge-booked       { background: rgba(46, 168, 74, 0.2);   color: #7df5a0; border-color: rgba(46, 168, 74, 0.3);   }
+.badge-prescription { background: rgba(160, 87, 232, 0.2);  color: #c8a0f5; border-color: rgba(160, 87, 232, 0.3);  }
+.badge-hours        { background: rgba(87, 125, 232, 0.2);  color: #a0b4f5; border-color: rgba(87, 125, 232, 0.3);  }
