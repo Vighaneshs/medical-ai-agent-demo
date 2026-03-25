@@ -92,6 +92,22 @@ export function ChatInterface() {
 
     try {
       await sendMessage(sessionId.current, text, (chunk) => {
+        if (chunk.newMessage) {
+          if (accumulated.trim()) {
+            // Backend started a new continuation turn — flush current text as its own bubble
+            setMessages(prev => [...prev, {
+              id: uuidv4(),
+              role: 'assistant',
+              content: accumulated.trim(),
+              createdAt: new Date().toISOString(),
+              isEmergency,
+            }]);
+          }
+          accumulated = '';
+          isEmergency = false;
+          setStreamingText('');
+          return;
+        }
         if (chunk.text) {
           accumulated += chunk.text;
           setStreamingText(accumulated);
@@ -111,11 +127,11 @@ export function ChatInterface() {
       setSendError(true);
     }
 
-    if (accumulated) {
+    if (accumulated.trim()) {
       const aiMsg: ChatMessage = {
         id: uuidv4(),
         role: 'assistant',
-        content: accumulated,
+        content: accumulated.trim(),
         createdAt: new Date().toISOString(),
         isEmergency,
       };

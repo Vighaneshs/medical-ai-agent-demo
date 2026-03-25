@@ -56,6 +56,7 @@ export interface SSEChunk {
   text?: string;
   emergency?: boolean;
   done?: boolean;
+  newMessage?: boolean;
   newState?: SessionState;
   doctorId?: string;
   selectedSlot?: TimeSlot;

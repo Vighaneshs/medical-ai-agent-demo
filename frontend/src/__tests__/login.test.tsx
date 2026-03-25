@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import LoginPage from '@/app/login/page';
-import { SESSION_KEY, USERNAME_KEY } from '@/lib/constants';
+import { SESSION_KEY, USERNAME_KEY, DEMO_PASSWORD } from '@/lib/constants';
 
 const mockReplace = jest.fn();
 
@@ -46,6 +46,9 @@ describe('LoginPage', () => {
     fireEvent.change(screen.getByPlaceholderText(/e\.g\. Alice/i), {
       target: { value: 'Alice' },
     });
+    fireEvent.change(screen.getByPlaceholderText(/enter demo password/i), {
+      target: { value: DEMO_PASSWORD },
+    });
     fireEvent.click(screen.getByRole('button', { name: /start chatting/i }));
 
     expect(localStorage.getItem(USERNAME_KEY)).toBe('Alice');
@@ -57,6 +60,9 @@ describe('LoginPage', () => {
     fireEvent.change(screen.getByPlaceholderText(/e\.g\. Alice/i), {
       target: { value: 'Bob' },
     });
+    fireEvent.change(screen.getByPlaceholderText(/enter demo password/i), {
+      target: { value: DEMO_PASSWORD },
+    });
     fireEvent.click(screen.getByRole('button', { name: /start chatting/i }));
 
     expect(mockReplace).toHaveBeenCalledWith('/');
@@ -66,6 +72,9 @@ describe('LoginPage', () => {
     render(<LoginPage />);
     fireEvent.change(screen.getByPlaceholderText(/e\.g\. Alice/i), {
       target: { value: 'UPPER' },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/enter demo password/i), {
+      target: { value: DEMO_PASSWORD },
     });
     fireEvent.click(screen.getByRole('button', { name: /start chatting/i }));
 

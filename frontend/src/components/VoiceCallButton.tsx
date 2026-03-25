@@ -16,6 +16,7 @@ export function VoiceCallButton({ sessionId }: Props) {
   const [browserState, setBrowserState] = useState<BrowserCallState>('idle');
   const [showPhoneInput, setShowPhoneInput] = useState(false);
   const [phone, setPhone] = useState('');
+  const [countryCode, setCountryCode] = useState('+1');
   const [phoneCalling, setPhoneCalling] = useState(false);
   const [phoneSuccess, setPhoneSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +61,7 @@ export function VoiceCallButton({ sessionId }: Props) {
     setPhoneCalling(true);
     setError(null);
     try {
-      await initiatePhoneCall(sessionId, phone.trim());
+      await initiatePhoneCall(sessionId, `${countryCode}${phone.trim()}`);
       setPhoneCalling(false);
       setPhoneSuccess(true);
       setShowPhoneInput(false);
@@ -183,9 +184,25 @@ export function VoiceCallButton({ sessionId }: Props) {
             transition={{ duration: 0.15 }}
             className="flex gap-2"
           >
+            <select
+              value={countryCode}
+              onChange={e => setCountryCode(e.target.value)}
+              className="h-8 rounded-lg px-1 text-xs"
+              style={{
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid var(--glass-border)',
+                color: 'var(--text)',
+                outline: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              {['+1','+44','+91','+61','+49','+33','+52','+55','+81','+86'].map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
             <input
               type="tel"
-              placeholder="+1 (555) 000-0000"
+              placeholder="555 000-0000"
               value={phone}
               onChange={e => setPhone(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && startPhoneCall()}
@@ -196,7 +213,7 @@ export function VoiceCallButton({ sessionId }: Props) {
                 border: '1px solid var(--glass-border)',
                 color: 'var(--text)',
                 outline: 'none',
-                width: 160,
+                width: 130,
               }}
             />
             <motion.button

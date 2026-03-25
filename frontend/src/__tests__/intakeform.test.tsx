@@ -132,7 +132,7 @@ describe('IntakeForm', () => {
     fireEvent.change(screen.getByPlaceholderText('Jane'), { target: { value: 'John' } });
     fireEvent.change(screen.getByPlaceholderText('Smith'), { target: { value: 'Smith' } });
     fireEvent.change(getDobInput(), { target: { value: '1990-01-15' } });
-    fireEvent.change(screen.getByPlaceholderText('(555) 000-0000'), { target: { value: '555-1234' } });
+    fireEvent.change(screen.getByPlaceholderText('(555) 000-0000'), { target: { value: '555-123-4567' } });
     fireEvent.change(screen.getByPlaceholderText('jane@example.com'), { target: { value: 'john@example.com' } });
     fireEvent.change(screen.getByPlaceholderText(/describe your symptoms/i), { target: { value: 'knee pain' } });
 
@@ -140,7 +140,7 @@ describe('IntakeForm', () => {
 
     expect(mockSubmit).toHaveBeenCalledTimes(1);
     expect(mockSubmit).toHaveBeenCalledWith(
-      'My name is John Smith, date of birth 1990-01-15, phone 555-1234, email john@example.com. Reason for visit: knee pain.',
+      'My name is John Smith, date of birth 1990-01-15, phone +1555-123-4567, email john@example.com. Reason for visit: knee pain.',
     );
   });
 
@@ -150,8 +150,8 @@ describe('IntakeForm', () => {
     render(<IntakeForm onSubmit={mockSubmit} />);
 
     const rawPhone = '(800) 123-4567';
-    fireEvent.change(screen.getByPlaceholderText('Jane'), { target: { value: 'A' } });
-    fireEvent.change(screen.getByPlaceholderText('Smith'), { target: { value: 'B' } });
+    fireEvent.change(screen.getByPlaceholderText('Jane'), { target: { value: 'Al' } });
+    fireEvent.change(screen.getByPlaceholderText('Smith'), { target: { value: 'Bo' } });
     fireEvent.change(getDobInput(), { target: { value: '2000-06-01' } });
     fireEvent.change(screen.getByPlaceholderText('(555) 000-0000'), { target: { value: rawPhone } });
     fireEvent.change(screen.getByPlaceholderText('jane@example.com'), { target: { value: 'a@b.com' } });
@@ -160,7 +160,7 @@ describe('IntakeForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     expect(mockSubmit).toHaveBeenCalledWith(
-      expect.stringContaining(`phone ${rawPhone}`),
+      expect.stringContaining(`phone +1${rawPhone}`),
     );
   });
 
@@ -211,8 +211,8 @@ describe('IntakeForm', () => {
     fireEvent.blur(firstNameInput);
     expect(firstNameInput.style.border).toContain('var(--danger)');
 
-    // Type a character — field is now non-empty, error should be gone
-    fireEvent.change(firstNameInput, { target: { value: 'J' } });
+    // Type a valid value — field passes validation, error should be gone
+    fireEvent.change(firstNameInput, { target: { value: 'Jo' } });
     expect(firstNameInput.style.border).not.toContain('var(--danger)');
   });
 });

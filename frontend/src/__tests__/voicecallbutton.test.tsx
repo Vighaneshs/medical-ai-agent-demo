@@ -66,7 +66,7 @@ describe('VoiceCallButton', () => {
 
   it('phone input hidden by default', () => {
     render(<VoiceCallButton {...defaultProps} />);
-    expect(screen.queryByPlaceholderText('+1 (555) 000-0000')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('555 000-0000')).not.toBeInTheDocument();
   });
 
   // ── 3. Clicking "Call my phone" shows phone input ─────────────────────────
@@ -74,7 +74,7 @@ describe('VoiceCallButton', () => {
   it('clicking call my phone shows phone input', () => {
     render(<VoiceCallButton {...defaultProps} />);
     fireEvent.click(screen.getByTitle('Call my phone'));
-    expect(screen.getByPlaceholderText('+1 (555) 000-0000')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('555 000-0000')).toBeInTheDocument();
   });
 
   // ── 4. Clicking "Call my phone" again hides phone input ───────────────────
@@ -83,10 +83,10 @@ describe('VoiceCallButton', () => {
     render(<VoiceCallButton {...defaultProps} />);
 
     fireEvent.click(screen.getByTitle('Call my phone'));
-    expect(screen.getByPlaceholderText('+1 (555) 000-0000')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('555 000-0000')).toBeInTheDocument();
 
     fireEvent.click(screen.getByTitle('Call my phone'));
-    expect(screen.queryByPlaceholderText('+1 (555) 000-0000')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('555 000-0000')).not.toBeInTheDocument();
   });
 
   // ── 5. "Call me" button disabled when phone is empty ─────────────────────
@@ -105,7 +105,7 @@ describe('VoiceCallButton', () => {
     render(<VoiceCallButton {...defaultProps} />);
     fireEvent.click(screen.getByTitle('Call my phone'));
 
-    const phoneInput = screen.getByPlaceholderText('+1 (555) 000-0000');
+    const phoneInput = screen.getByPlaceholderText('555 000-0000');
     fireEvent.change(phoneInput, { target: { value: '+1 555-0000' } });
 
     const callMeButton = screen.getByRole('button', { name: /call me/i });
@@ -120,7 +120,7 @@ describe('VoiceCallButton', () => {
     render(<VoiceCallButton {...defaultProps} />);
     fireEvent.click(screen.getByTitle('Call my phone'));
 
-    fireEvent.change(screen.getByPlaceholderText('+1 (555) 000-0000'), {
+    fireEvent.change(screen.getByPlaceholderText('555 000-0000'), {
       target: { value: '+1 555-0000' },
     });
     fireEvent.click(screen.getByRole('button', { name: /call me/i }));
@@ -138,7 +138,7 @@ describe('VoiceCallButton', () => {
     render(<VoiceCallButton {...defaultProps} />);
     fireEvent.click(screen.getByTitle('Call my phone'));
 
-    fireEvent.change(screen.getByPlaceholderText('+1 (555) 000-0000'), {
+    fireEvent.change(screen.getByPlaceholderText('555 000-0000'), {
       target: { value: '+1 555-0000' },
     });
     fireEvent.click(screen.getByRole('button', { name: /call me/i }));

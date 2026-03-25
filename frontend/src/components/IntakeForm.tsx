@@ -36,9 +36,23 @@ const errorStyle = {
   border: '1px solid var(--danger)',
 };
 
+const COUNTRY_CODES = [
+  { code: '+1',  label: '🇺🇸 +1'  },
+  { code: '+44', label: '🇬🇧 +44' },
+  { code: '+91', label: '🇮🇳 +91' },
+  { code: '+61', label: '🇦🇺 +61' },
+  { code: '+49', label: '🇩🇪 +49' },
+  { code: '+33', label: '🇫🇷 +33' },
+  { code: '+52', label: '🇲🇽 +52' },
+  { code: '+55', label: '🇧🇷 +55' },
+  { code: '+81', label: '🇯🇵 +81' },
+  { code: '+86', label: '🇨🇳 +86' },
+];
+
 export function IntakeForm({ onSubmit, disabled }: IntakeFormProps) {
   const [fields, setFields] = useState<FormFields>(EMPTY);
   const [touched, setTouched] = useState<Partial<Record<keyof FormFields, boolean>>>({});
+  const [countryCode, setCountryCode] = useState('+1');
 
   function set(key: keyof FormFields, value: string) {
     setFields(prev => ({ ...prev, [key]: value }));
@@ -98,7 +112,7 @@ export function IntakeForm({ onSubmit, disabled }: IntakeFormProps) {
     const text =
       `My name is ${fields.firstName.trim()} ${fields.lastName.trim()}, ` +
       `date of birth ${fields.dob}, ` +
-      `phone ${fields.phone.trim()}, ` +
+      `phone ${countryCode}${fields.phone.trim()}, ` +
       `email ${fields.email.trim()}. ` +
       `Reason for visit: ${fields.reason.trim()}.`;
 
@@ -165,15 +179,33 @@ export function IntakeForm({ onSubmit, disabled }: IntakeFormProps) {
           </div>
           <div className="flex flex-col gap-1 flex-1">
             <label className="text-xs" style={{ color: 'var(--text-muted)' }}>Phone</label>
-            <input
-              type="tel"
-              placeholder="(555) 000-0000"
-              value={fields.phone}
-              onChange={e => set('phone', e.target.value)}
-              onBlur={() => touch('phone')}
-              disabled={disabled}
-              style={hasError('phone') ? errorStyle : inputStyle}
-            />
+            <div className="flex gap-1">
+              <select
+                value={countryCode}
+                onChange={e => setCountryCode(e.target.value)}
+                disabled={disabled}
+                style={{
+                  ...inputStyle,
+                  width: 'auto',
+                  flexShrink: 0,
+                  paddingRight: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                {COUNTRY_CODES.map(c => (
+                  <option key={c.code} value={c.code}>{c.label}</option>
+                ))}
+              </select>
+              <input
+                type="tel"
+                placeholder="(555) 000-0000"
+                value={fields.phone}
+                onChange={e => set('phone', e.target.value)}
+                onBlur={() => touch('phone')}
+                disabled={disabled}
+                style={{ ...(hasError('phone') ? errorStyle : inputStyle) }}
+              />
+            </div>
             {errorMsg('phone') && <span className="text-xs" style={{ color: 'var(--danger)' }}>{errorMsg('phone')}</span>}
           </div>
         </div>
