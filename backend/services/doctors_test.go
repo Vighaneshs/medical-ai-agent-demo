@@ -19,7 +19,7 @@ func TestGetDoctorByID(t *testing.T) {
 		{"dr-thompson", false, "Dr. Lisa Thompson"},
 		{"dr-unknown", true, ""},
 		{"", true, ""},
-		{"DR-MITCHELL", true, ""}, // case-sensitive
+		{"DR-MITCHELL", false, "Dr. Sarah Mitchell"}, // normalized to lowercase
 	}
 
 	for _, tc := range tests {

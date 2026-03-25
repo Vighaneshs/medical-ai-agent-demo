@@ -21,18 +21,36 @@ func NewVoiceHandler(sessions *services.SessionStore) *VoiceHandler {
 	return &VoiceHandler{sessions: sessions}
 }
 
-// vapiLLMConfig returns the Vapi model block for the active AI provider.
-func vapiLLMConfig(systemPrompt string) map[string]interface{} {
+// vapiLLMConfig returns the Vapi model block for the active AI provider,
+// including conversation history so the voice agent picks up mid-conversation.
+func vapiLLMConfig(systemPrompt string, history []models.ChatMessage) map[string]interface{} {
 	provider, model := "anthropic", services.ActiveModel()
 	if os.Getenv("AI_PROVIDER") == "gemini" {
 		provider, model = "google", services.ActiveModel()
 	}
+
+	// System prompt first, then last 20 turns of chat history as context
+	msgs := []map[string]string{
+		{"role": "system", "content": systemPrompt},
+	}
+	start := 0
+	if len(history) > 20 {
+		start = len(history) - 20
+	}
+	for _, m := range history[start:] {
+		if m.Content == "" {
+			continue
+		}
+		msgs = append(msgs, map[string]string{
+			"role":    m.Role, // "user" | "assistant" — Vapi normalises for each provider
+			"content": m.Content,
+		})
+	}
+
 	return map[string]interface{}{
 		"provider": provider,
 		"model":    model,
-		"messages": []map[string]string{
-			{"role": "system", "content": systemPrompt},
-		},
+		"messages": msgs,
 	}
 }
 
@@ -66,7 +84,7 @@ func (h *VoiceHandler) HandleInitiate(w http.ResponseWriter, r *http.Request) {
 		AssistantID: os.Getenv("VAPI_ASSISTANT_ID"),
 		AssistantOverrides: map[string]interface{}{
 			"firstMessage": firstMessage,
-			"model":        vapiLLMConfig(systemPrompt),
+			"model":        vapiLLMConfig(systemPrompt, sess.Messages),
 		},
 	}
 
@@ -111,7 +129,7 @@ func (h *VoiceHandler) HandleCallPhone(w http.ResponseWriter, r *http.Request) {
 		"assistantId": assistantID,
 		"assistantOverrides": map[string]interface{}{
 			"firstMessage": firstMessage,
-			"model":        vapiLLMConfig(systemPrompt),
+			"model":        vapiLLMConfig(systemPrompt, sess.Messages),
 		},
 		"customer":      map[string]interface{}{"number": req.Phone},
 		"phoneNumberId": phoneNumberID,
@@ -181,7 +199,7 @@ func (h *VoiceHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 
 			overrides = map[string]interface{}{
 				"firstMessage": firstMessage,
-				"model":        vapiLLMConfig(systemPrompt),
+				"model":        vapiLLMConfig(systemPrompt, sess.Messages),
 			}
 		}
 	}

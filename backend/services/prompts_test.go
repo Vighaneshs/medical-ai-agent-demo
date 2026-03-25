@@ -223,3 +223,208 @@ func TestBuild_NoVoiceContextWhenEmpty(t *testing.T) {
 		t.Error("voice context block should not appear when ChatSummary is empty")
 	}
 }
+
+// ─── New extended tests ───────────────────────────────────────────────────────
+
+// TestBuild_IntakeState_PartialFields verifies that when only some patient
+// fields are collected, the prompt lists those under "Already collected" and
+// the remaining ones under "Still needed".
+func TestBuild_IntakeState_PartialFields(t *testing.T) {
+	sess := newSession(models.StateIntake)
+	// Provide only name — the other four fields are still missing
+	sess.PatientInfo = models.PatientInfo{
+		FirstName: "Sam",
+		LastName:  "Rivera",
+	}
+	prompt := Build(sess)
+
+	if !strings.Contains(prompt, "Already collected") {
+		t.Error("partial intake: prompt should contain 'Already collected' section")
+	}
+	if !strings.Contains(prompt, "Sam Rivera") {
+		t.Error("partial intake: prompt should show collected name")
+	}
+	if !strings.Contains(prompt, "Still needed") {
+		t.Error("partial intake: prompt should contain 'Still needed' section for remaining fields")
+	}
+	// Remaining fields that should be listed as still needed
+	for _, field := range []string{"date of birth", "phone number", "email address", "reason for visit"} {
+		if !strings.Contains(prompt, field) {
+			t.Errorf("partial intake: prompt missing still-needed field %q", field)
+		}
+	}
+}
+
+// TestBuild_IntakeState_AllFieldsCollected verifies that when every patient
+// field is present, the "Still needed" section is absent.
+func TestBuild_IntakeState_AllFieldsCollected(t *testing.T) {
+	sess := newSession(models.StateIntake)
+	sess.PatientInfo = models.PatientInfo{
+		FirstName:      "Alex",
+		LastName:       "Johnson",
+		DOB:            "1990-03-05",
+		Phone:          "555-123-4567",
+		Email:          "alex@test.com",
+		ReasonForVisit: "migraines",
+	}
+	prompt := Build(sess)
+
+	if strings.Contains(prompt, "Still needed") {
+		t.Error("all fields collected: 'Still needed' section should not appear")
+	}
+	if !strings.Contains(prompt, "Already collected") {
+		t.Error("all fields collected: 'Already collected' section should be present")
+	}
+}
+
+// TestBuild_SchedulingState_NilMatchedDoctor verifies that Build does not panic
+// when sess.MatchedDoctor is nil in SCHEDULING state.
+func TestBuild_SchedulingState_NilMatchedDoctor(t *testing.T) {
+	sess := newSession(models.StateScheduling)
+	sess.MatchedDoctor = nil
+
+	// Must not panic
+	var prompt string
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("Build panicked with nil MatchedDoctor in SCHEDULING: %v", r)
+			}
+		}()
+		prompt = Build(sess)
+	}()
+
+	if !strings.Contains(prompt, "SCHEDULING") {
+		t.Error("SCHEDULING prompt missing SCHEDULING heading even with nil doctor")
+	}
+}
+
+// TestBuild_ConfirmingState_NilPointers verifies that Build does not panic when
+// MatchedDoctor or SelectedSlot is nil in CONFIRMING state.
+func TestBuild_ConfirmingState_NilPointers(t *testing.T) {
+	tests := []struct {
+		name   string
+		doctor *models.Doctor
+		slot   *models.TimeSlot
+	}{
+		{
+			name:   "both nil",
+			doctor: nil,
+			slot:   nil,
+		},
+		{
+			name:   "nil MatchedDoctor only",
+			doctor: nil,
+			slot: &models.TimeSlot{
+				DoctorID: "dr-patel", Date: "2026-05-01",
+				StartTime: "10:00", EndTime: "11:00",
+			},
+		},
+		{
+			name:   "nil SelectedSlot only",
+			doctor: GetDoctorByID("dr-patel"),
+			slot:   nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sess := newSession(models.StateConfirming)
+			sess.MatchedDoctor = tc.doctor
+			sess.SelectedSlot = tc.slot
+
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						t.Fatalf("Build panicked (%s): %v", tc.name, r)
+					}
+				}()
+				Build(sess)
+			}()
+		})
+	}
+}
+
+// TestBuild_ResponseFormatRule verifies that the persona block always contains
+// the "RESPONSE FORMAT" instruction requiring a text message in every response.
+func TestBuild_ResponseFormatRule(t *testing.T) {
+	states := []models.SessionState{
+		models.StateGreeting, models.StateIntake, models.StateMatching,
+		models.StateScheduling, models.StateConfirming, models.StateBooked,
+		models.StatePrescription, models.StateHours,
+	}
+	for _, state := range states {
+		t.Run(string(state), func(t *testing.T) {
+			sess := newSession(state)
+			if state == models.StateScheduling {
+				sess.MatchedDoctor = GetDoctorByID("dr-mitchell")
+			}
+			prompt := Build(sess)
+			if !strings.Contains(prompt, "RESPONSE FORMAT") {
+				t.Errorf("state %s: prompt missing RESPONSE FORMAT rule", state)
+			}
+			if !strings.Contains(prompt, "Always include a short") {
+				t.Errorf("state %s: prompt missing instruction to always include text", state)
+			}
+		})
+	}
+}
+
+// TestBuild_ToolReminder_WorksFromAnyState verifies that the tool reminder
+// section describes begin_intake, begin_prescription, and show_office_info
+// as working "from any state" rather than being restricted to GREETING.
+func TestBuild_ToolReminder_WorksFromAnyState(t *testing.T) {
+	sess := newSession(models.StateGreeting)
+	prompt := Build(sess)
+
+	anyStateTools := []string{"begin_intake", "begin_prescription", "show_office_info"}
+	for _, tool := range anyStateTools {
+		// Find the line(s) mentioning the tool and ensure "any state" is present
+		idx := strings.Index(prompt, tool+": call when")
+		if idx == -1 {
+			t.Errorf("tool reminder: %q description not found in prompt", tool)
+			continue
+		}
+		// Extract a short excerpt around the tool's description line
+		end := idx + 120
+		if end > len(prompt) {
+			end = len(prompt)
+		}
+		excerpt := prompt[idx:end]
+		if !strings.Contains(excerpt, "any state") {
+			t.Errorf("tool %q description should say 'works from any state', got excerpt: %q", tool, excerpt)
+		}
+	}
+}
+
+// TestBuild_ConfirmingState_ContainsSlotInfo verifies that when a slot is set,
+// the CONFIRMING prompt contains the appointment date and time.
+func TestBuild_ConfirmingState_ContainsSlotInfo(t *testing.T) {
+	sess := newSession(models.StateConfirming)
+	sess.MatchedDoctor = GetDoctorByID("dr-patel")
+	sess.SelectedSlot = &models.TimeSlot{
+		DoctorID:  "dr-patel",
+		Date:      "2026-06-15",
+		StartTime: "11:00",
+		EndTime:   "12:00",
+	}
+	sess.PatientInfo = models.PatientInfo{
+		FirstName: "Quinn",
+		LastName:  "Taylor",
+		Email:     "quinn@example.com",
+		Phone:     "555-444-3333",
+	}
+
+	prompt := Build(sess)
+
+	// FormatDateReadable("2026-06-15") = "Monday, June 15, 2026"
+	if !strings.Contains(prompt, "June 15, 2026") {
+		t.Error("CONFIRMING prompt should contain the formatted appointment date")
+	}
+	if !strings.Contains(prompt, "11:00") {
+		t.Error("CONFIRMING prompt should contain the appointment start time")
+	}
+	if !strings.Contains(prompt, "12:00") {
+		t.Error("CONFIRMING prompt should contain the appointment end time")
+	}
+}

@@ -264,6 +264,7 @@ func TestExecuteToolCalls_ShowOfficeInfo(t *testing.T) {
 func TestExecuteToolCalls_CollectIntake(t *testing.T) {
 	h := setupHandlerTest(t, &mockAI{})
 	sess := services.Store.GetOrCreate("collect-intake-test")
+	sess.State = models.StateIntake
 
 	calls := []services.ToolCallResult{{
 		ToolName: "collect_intake",
@@ -295,6 +296,7 @@ func TestExecuteToolCalls_CollectIntake(t *testing.T) {
 func TestExecuteToolCalls_ConfirmDoctor(t *testing.T) {
 	h := setupHandlerTest(t, &mockAI{})
 	sess := services.Store.GetOrCreate("confirm-doc-test")
+	sess.State = models.StateMatching
 
 	calls := []services.ToolCallResult{{
 		ToolName: "confirm_doctor",
@@ -330,6 +332,7 @@ func TestExecuteToolCalls_ConfirmDoctor_InvalidID(t *testing.T) {
 func TestExecuteToolCalls_SelectSlot(t *testing.T) {
 	h := setupHandlerTest(t, &mockAI{})
 	sess := services.Store.GetOrCreate("select-slot-test")
+	sess.State = models.StateScheduling
 	sess.MatchedDoctor = services.GetDoctorByID("dr-mitchell")
 
 	// Get a real available slot
@@ -425,5 +428,322 @@ func TestExecuteToolCalls_EmptyCalls(t *testing.T) {
 	newState := h.executeToolCalls(sess, nil, nil)
 	if newState != models.StateGreeting {
 		t.Errorf("empty calls: state = %q, want GREETING (unchanged)", newState)
+	}
+}
+
+// ─── TestExecuteToolCalls_StateGuards ────────────────────────────────────────
+
+// TestExecuteToolCalls_StateGuards verifies that each state-gated tool is
+// silently ignored when the session is in a state that does not permit it.
+func TestExecuteToolCalls_StateGuards(t *testing.T) {
+	tests := []struct {
+		name          string
+		setupState    models.SessionState
+		toolName      string
+		extraSetup    func(sess *models.Session)
+		wantState     models.SessionState
+		wantNilDoctor bool // if true, MatchedDoctor must still be nil after the call
+	}{
+		{
+			name:       "collect_intake ignored in MATCHING",
+			setupState: models.StateMatching,
+			toolName:   "collect_intake",
+			extraSetup: func(sess *models.Session) {
+				// Provide all fields so the tool would normally succeed
+				// collect_intake is only allowed in INTAKE, not MATCHING
+			},
+			wantState:     models.StateMatching,
+			wantNilDoctor: false,
+		},
+		{
+			name:       "confirm_doctor ignored in SCHEDULING",
+			setupState: models.StateScheduling,
+			toolName:   "confirm_doctor",
+			extraSetup: func(sess *models.Session) {
+				sess.MatchedDoctor = services.GetDoctorByID("dr-patel")
+			},
+			wantState: models.StateScheduling,
+		},
+		{
+			name:       "select_slot ignored in CONFIRMING",
+			setupState: models.StateConfirming,
+			toolName:   "select_slot",
+			extraSetup: func(sess *models.Session) {
+				sess.MatchedDoctor = services.GetDoctorByID("dr-mitchell")
+			},
+			wantState: models.StateConfirming,
+		},
+		{
+			name:       "confirm_booking ignored in SCHEDULING",
+			setupState: models.StateScheduling,
+			toolName:   "confirm_booking",
+			extraSetup: func(sess *models.Session) {
+				sess.MatchedDoctor = services.GetDoctorByID("dr-patel")
+				sess.SelectedSlot = &models.TimeSlot{
+					DoctorID: "dr-patel", Date: "2099-01-01",
+					StartTime: "09:00", EndTime: "10:00",
+				}
+			},
+			wantState: models.StateScheduling,
+		},
+		{
+			name:       "begin_intake ignored in MATCHING",
+			setupState: models.StateMatching,
+			toolName:   "begin_intake",
+			extraSetup: nil,
+			wantState:  models.StateMatching,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := setupHandlerTest(t, &mockAI{})
+			sess := services.Store.GetOrCreate("state-guard-" + tc.name)
+			sess.State = tc.setupState
+			if tc.extraSetup != nil {
+				tc.extraSetup(sess)
+			}
+			origPatientInfo := sess.PatientInfo
+
+			calls := []services.ToolCallResult{{
+				ToolName: tc.toolName,
+				Input: map[string]interface{}{
+					// Provide inputs that would succeed if the tool were allowed
+					"firstName":      "Blocked",
+					"lastName":       "User",
+					"dob":            "1990-01-01",
+					"phone":          "555-999-0000",
+					"email":          "blocked@test.com",
+					"reasonForVisit": "testing",
+					"doctorId":       "dr-thompson",
+					"date":           "2099-06-01",
+					"startTime":      "09:00",
+					"smsOptIn":       false,
+				},
+			}}
+
+			newState := h.executeToolCalls(sess, calls, nil)
+
+			if newState != tc.wantState {
+				t.Errorf("state after blocked tool call = %q, want %q", newState, tc.wantState)
+			}
+
+			// collect_intake specifically must not update PatientInfo when ignored
+			if tc.toolName == "collect_intake" {
+				if sess.PatientInfo.FirstName != origPatientInfo.FirstName {
+					t.Errorf("collect_intake (blocked): PatientInfo.FirstName changed to %q, want unchanged %q",
+						sess.PatientInfo.FirstName, origPatientInfo.FirstName)
+				}
+			}
+		})
+	}
+}
+
+// ─── TestExecuteToolCalls_ConfirmBooking_NilGuards ───────────────────────────
+
+// TestExecuteToolCalls_ConfirmBooking_NilGuards checks that confirm_booking
+// does not panic and stays in CONFIRMING when MatchedDoctor or SelectedSlot
+// is nil, and succeeds when both are set.
+func TestExecuteToolCalls_ConfirmBooking_NilGuards(t *testing.T) {
+	t.Run("nil MatchedDoctor stays CONFIRMING", func(t *testing.T) {
+		h := setupHandlerTest(t, &mockAI{})
+		sess := services.Store.GetOrCreate("confirm-booking-nil-doctor")
+		sess.State = models.StateConfirming
+		sess.MatchedDoctor = nil
+		sess.SelectedSlot = &models.TimeSlot{
+			DoctorID: "dr-patel", Date: "2099-07-01",
+			StartTime: "10:00", EndTime: "11:00",
+		}
+
+		calls := []services.ToolCallResult{{
+			ToolName: "confirm_booking",
+			Input:    map[string]interface{}{"smsOptIn": false},
+		}}
+		newState := h.executeToolCalls(sess, calls, nil)
+
+		if newState != models.StateConfirming {
+			t.Errorf("nil MatchedDoctor: state = %q, want CONFIRMING", newState)
+		}
+		if sess.Appointment != nil {
+			t.Error("nil MatchedDoctor: Appointment should not be created")
+		}
+	})
+
+	t.Run("nil SelectedSlot stays CONFIRMING", func(t *testing.T) {
+		h := setupHandlerTest(t, &mockAI{})
+		sess := services.Store.GetOrCreate("confirm-booking-nil-slot")
+		sess.State = models.StateConfirming
+		sess.MatchedDoctor = services.GetDoctorByID("dr-patel")
+		sess.SelectedSlot = nil
+
+		calls := []services.ToolCallResult{{
+			ToolName: "confirm_booking",
+			Input:    map[string]interface{}{"smsOptIn": false},
+		}}
+		newState := h.executeToolCalls(sess, calls, nil)
+
+		if newState != models.StateConfirming {
+			t.Errorf("nil SelectedSlot: state = %q, want CONFIRMING", newState)
+		}
+		if sess.Appointment != nil {
+			t.Error("nil SelectedSlot: Appointment should not be created")
+		}
+	})
+
+	t.Run("both set succeeds and transitions to BOOKED", func(t *testing.T) {
+		h := setupHandlerTest(t, &mockAI{})
+		sess := services.Store.GetOrCreate("confirm-booking-nil-both-set")
+		sess.State = models.StateConfirming
+		sess.MatchedDoctor = services.GetDoctorByID("dr-patel")
+		sess.SelectedSlot = &models.TimeSlot{
+			DoctorID:  "dr-patel",
+			Date:      "2099-08-01",
+			StartTime: "14:00",
+			EndTime:   "15:00",
+		}
+		sess.PatientInfo = models.PatientInfo{
+			FirstName: "Test",
+			LastName:  "Booking",
+			Email:     "testbooking@example.com",
+			Phone:     "555-111-2222",
+		}
+
+		calls := []services.ToolCallResult{{
+			ToolName: "confirm_booking",
+			Input:    map[string]interface{}{"smsOptIn": true},
+		}}
+		newState := h.executeToolCalls(sess, calls, nil)
+
+		if newState != models.StateBooked {
+			t.Errorf("both set: state = %q, want BOOKED", newState)
+		}
+		if sess.Appointment == nil {
+			t.Fatal("both set: Appointment should be created")
+		}
+		if sess.Appointment.Doctor.ID != "dr-patel" {
+			t.Errorf("Appointment.Doctor.ID = %q, want dr-patel", sess.Appointment.Doctor.ID)
+		}
+		if !sess.PatientInfo.SMSOptIn {
+			t.Error("SMSOptIn should be true")
+		}
+	})
+}
+
+// ─── TestExecuteToolCalls_BeginIntake_ValidStates ────────────────────────────
+
+// TestExecuteToolCalls_BeginIntake_ValidStates ensures begin_intake transitions
+// to INTAKE from allowed states (GREETING, BOOKED, PRESCRIPTION, HOURS) and
+// stays put in mid-flow states (MATCHING, SCHEDULING, CONFIRMING, INTAKE).
+func TestExecuteToolCalls_BeginIntake_ValidStates(t *testing.T) {
+	allowed := []models.SessionState{
+		models.StateGreeting,
+		models.StateBooked,
+		models.StatePrescription,
+		models.StateHours,
+	}
+	blocked := []models.SessionState{
+		models.StateMatching,
+		models.StateScheduling,
+		models.StateConfirming,
+		models.StateIntake,
+	}
+
+	calls := []services.ToolCallResult{{
+		ToolName: "begin_intake",
+		Input:    map[string]interface{}{},
+	}}
+
+	for _, state := range allowed {
+		t.Run("allowed from "+string(state), func(t *testing.T) {
+			h := setupHandlerTest(t, &mockAI{})
+			sess := services.Store.GetOrCreate("begin-intake-allowed-" + string(state))
+			sess.State = state
+
+			newState := h.executeToolCalls(sess, calls, nil)
+			if newState != models.StateIntake {
+				t.Errorf("begin_intake from %s: state = %q, want INTAKE", state, newState)
+			}
+		})
+	}
+
+	for _, state := range blocked {
+		t.Run("blocked from "+string(state), func(t *testing.T) {
+			h := setupHandlerTest(t, &mockAI{})
+			sess := services.Store.GetOrCreate("begin-intake-blocked-" + string(state))
+			sess.State = state
+			if state == models.StateScheduling {
+				sess.MatchedDoctor = services.GetDoctorByID("dr-mitchell")
+			}
+
+			newState := h.executeToolCalls(sess, calls, nil)
+			if newState != state {
+				t.Errorf("begin_intake from %s (blocked): state = %q, want unchanged %s",
+					state, newState, state)
+			}
+		})
+	}
+}
+
+// ─── TestExecuteToolCalls_MultipleTools_LastWins ─────────────────────────────
+
+// TestExecuteToolCalls_MultipleTools_LastWins verifies that when two tools are
+// executed in sequence, state guards prevent a wrong-state tool from
+// overwriting the state set by a valid preceding tool.
+//
+// Scenario:
+//   1. select_slot fires: session is in SCHEDULING → transitions to CONFIRMING
+//   2. collect_intake fires: session is now in CONFIRMING (not INTAKE) → ignored
+//
+// Final state must be CONFIRMING, not the result of collect_intake (MATCHING).
+func TestExecuteToolCalls_MultipleTools_LastWins(t *testing.T) {
+	h := setupHandlerTest(t, &mockAI{})
+	sess := services.Store.GetOrCreate("multi-tool-last-wins")
+	sess.State = models.StateScheduling
+	sess.MatchedDoctor = services.GetDoctorByID("dr-mitchell")
+
+	// Find a real available slot so select_slot can succeed
+	slots := services.GenerateAvailability("dr-mitchell")
+	var available *models.TimeSlot
+	for i := range slots {
+		if slots[i].Available {
+			available = &slots[i]
+			break
+		}
+	}
+	if available == nil {
+		t.Skip("no available slots for dr-mitchell")
+	}
+
+	calls := []services.ToolCallResult{
+		{
+			ToolName: "select_slot",
+			Input: map[string]interface{}{
+				"date":      available.Date,
+				"startTime": available.StartTime,
+			},
+		},
+		{
+			// This tool expects INTAKE state; it should be ignored because
+			// after select_slot the session is now CONFIRMING.
+			ToolName: "collect_intake",
+			Input: map[string]interface{}{
+				"firstName":      "Ignored",
+				"lastName":       "Patient",
+				"dob":            "1990-01-01",
+				"phone":          "555-000-9999",
+				"email":          "ignored@test.com",
+				"reasonForVisit": "should not matter",
+			},
+		},
+	}
+
+	newState := h.executeToolCalls(sess, calls, nil)
+
+	if newState != models.StateConfirming {
+		t.Errorf("final state = %q, want CONFIRMING (collect_intake should be blocked after select_slot)", newState)
+	}
+	// PatientInfo should NOT have been overwritten by the blocked collect_intake
+	if sess.PatientInfo.FirstName == "Ignored" {
+		t.Error("PatientInfo.FirstName was overwritten by blocked collect_intake call")
 	}
 }
