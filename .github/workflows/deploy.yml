@@ -58,7 +58,7 @@ jobs:
 
             # Rebuild frontend
             cd /home/ubuntu/app/frontend
-            npm ci
+            npm ci --cache /home/ubuntu/.npm
             npm run build
 
             # Restart services
