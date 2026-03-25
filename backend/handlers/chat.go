@@ -54,7 +54,7 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	textChunks := make(chan string, 100)
 	toolResults := make(chan []services.ToolCallResult, 1)
 
-	go services.Claude.Stream(ctx, systemPrompt, sess.Messages, textChunks, toolResults)
+	go services.AI.Stream(ctx, systemPrompt, sess.Messages, textChunks, toolResults)
 
 	var assistantText string
 	for chunk := range textChunks {

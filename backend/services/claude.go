@@ -13,20 +13,13 @@ import (
 	"kyron-medical/models"
 )
 
-type ToolCallResult struct {
-	ToolName string
-	Input    map[string]interface{}
-}
-
 type ClaudeService struct {
 	client *anthropic.Client
 }
 
-var Claude *ClaudeService
-
-func InitClaude() {
+func newClaudeService() *ClaudeService {
 	client := anthropic.NewClient(option.WithAPIKey(os.Getenv("ANTHROPIC_API_KEY")))
-	Claude = &ClaudeService{client: &client}
+	return &ClaudeService{client: &client}
 }
 
 func (c *ClaudeService) Stream(
@@ -53,7 +46,7 @@ func (c *ClaudeService) Stream(
 		MaxTokens: 1024,
 		System:    []anthropic.TextBlockParam{{Text: systemPrompt}},
 		Messages:  anthropicMessages,
-		Tools:     buildTools(),
+		Tools:     buildClaudeTools(),
 	})
 
 	acc := anthropic.Message{}
@@ -123,7 +116,7 @@ func (c *ClaudeService) Summarize(ctx context.Context, messages []models.ChatMes
 	return resp.Content[0].Text
 }
 
-func buildTools() []anthropic.ToolUnionParam {
+func buildClaudeTools() []anthropic.ToolUnionParam {
 	tools := []struct {
 		name        string
 		description string
@@ -186,10 +179,10 @@ func buildTools() []anthropic.ToolUnionParam {
 			name:        "log_prescription_request",
 			description: "Log a prescription refill request",
 			properties: map[string]interface{}{
-				"medication":    map[string]string{"type": "string"},
+				"medication":     map[string]string{"type": "string"},
 				"prescriberName": map[string]string{"type": "string"},
-				"pharmacyName":  map[string]string{"type": "string"},
-				"pharmacyPhone": map[string]string{"type": "string"},
+				"pharmacyName":   map[string]string{"type": "string"},
+				"pharmacyPhone":  map[string]string{"type": "string"},
 			},
 			required: []string{"medication", "pharmacyName"},
 		},

@@ -18,6 +18,21 @@ func NewVoiceHandler(sessions *services.SessionStore) *VoiceHandler {
 	return &VoiceHandler{sessions: sessions}
 }
 
+// vapiLLMConfig returns the Vapi model block for the active AI provider.
+func vapiLLMConfig(systemPrompt string) map[string]interface{} {
+	provider, model := "anthropic", "claude-sonnet-4-6"
+	if os.Getenv("AI_PROVIDER") == "gemini" {
+		provider, model = "google", "gemini-2.0-flash"
+	}
+	return map[string]interface{}{
+		"provider": provider,
+		"model":    model,
+		"messages": []map[string]string{
+			{"role": "system", "content": systemPrompt},
+		},
+	}
+}
+
 func (h *VoiceHandler) HandleInitiate(w http.ResponseWriter, r *http.Request) {
 	var req models.VoiceInitiateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.SessionID == "" {
@@ -27,8 +42,7 @@ func (h *VoiceHandler) HandleInitiate(w http.ResponseWriter, r *http.Request) {
 
 	sess := h.sessions.GetOrCreate(req.SessionID)
 
-	// Generate a short summary of the chat for voice context
-	summary := services.Claude.Summarize(context.Background(), sess.Messages)
+	summary := services.AI.Summarize(context.Background(), sess.Messages)
 	if summary != "" {
 		sess.ChatSummary = summary
 		h.sessions.Save(sess)
@@ -49,13 +63,7 @@ func (h *VoiceHandler) HandleInitiate(w http.ResponseWriter, r *http.Request) {
 		AssistantID: os.Getenv("VAPI_ASSISTANT_ID"),
 		AssistantOverrides: map[string]interface{}{
 			"firstMessage": firstMessage,
-			"model": map[string]interface{}{
-				"provider": "anthropic",
-				"model":    "claude-sonnet-4-6",
-				"messages": []map[string]string{
-					{"role": "system", "content": systemPrompt},
-				},
-			},
+			"model":        vapiLLMConfig(systemPrompt),
 		},
 	}
 
@@ -70,7 +78,6 @@ func (h *VoiceHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract caller phone number from Vapi webhook
 	callerPhone := ""
 	if call, ok := payload["call"].(map[string]interface{}); ok {
 		if customer, ok := call["customer"].(map[string]interface{}); ok {
@@ -82,7 +89,7 @@ func (h *VoiceHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	if callerPhone != "" {
 		if sess := h.sessions.GetByPhone(callerPhone); sess != nil {
-			summary := services.Claude.Summarize(context.Background(), sess.Messages)
+			summary := services.AI.Summarize(context.Background(), sess.Messages)
 			if summary != "" {
 				sess.ChatSummary = summary
 				h.sessions.Save(sess)
@@ -98,20 +105,14 @@ func (h *VoiceHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 
 			overrides = map[string]interface{}{
 				"firstMessage": firstMessage,
-				"model": map[string]interface{}{
-					"provider": "anthropic",
-					"model":    "claude-sonnet-4-6",
-					"messages": []map[string]string{
-						{"role": "system", "content": systemPrompt},
-					},
-				},
+				"model":        vapiLLMConfig(systemPrompt),
 			}
 		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"assistantId":         os.Getenv("VAPI_ASSISTANT_ID"),
-		"assistantOverrides":  overrides,
+		"assistantId":        os.Getenv("VAPI_ASSISTANT_ID"),
+		"assistantOverrides": overrides,
 	})
 }

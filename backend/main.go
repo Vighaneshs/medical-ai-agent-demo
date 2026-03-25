@@ -22,7 +22,9 @@ func main() {
 		log.Fatalf("session store: %v", err)
 	}
 
-	services.InitClaude()
+	if err := services.InitAI(); err != nil {
+		log.Fatalf("AI provider init: %v", err)
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
