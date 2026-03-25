@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -10,7 +11,12 @@ import (
 	"kyron-medical/models"
 )
 
-const geminiModel = "gemini-2.0-flash"
+func geminiModel() string {
+	if m := os.Getenv("GEMINI_MODEL"); m != "" {
+		return m
+	}
+	return "gemini-2.0-flash"
+}
 
 type GeminiService struct {
 	client *genai.Client
@@ -44,10 +50,22 @@ func (g *GeminiService) Stream(
 		Tools:             []*genai.Tool{buildGeminiTools()},
 	}
 
-	var allParts []*genai.Part
+	if len(contents) == 0 {
+		log.Printf("[gemini] no contents after filtering — sending fallback")
+		select {
+		case textChunks <- "I didn't catch that. Could you say that again?":
+		default:
+		}
+		return
+	}
+	log.Printf("[gemini] starting stream: model=%s contents=%d", geminiModel(), len(contents))
 
-	for resp, err := range g.client.Models.GenerateContentStream(ctx, geminiModel, contents, config) {
+	var allParts []*genai.Part
+	respCount := 0
+
+	for resp, err := range g.client.Models.GenerateContentStream(ctx, geminiModel(), contents, config) {
 		if err != nil {
+			log.Printf("[gemini] stream error after %d responses: %v", respCount, err)
 			if ctx.Err() == nil {
 				select {
 				case textChunks <- "\n\nI'm having trouble connecting right now. Please try again.":
@@ -56,10 +74,30 @@ func (g *GeminiService) Stream(
 			}
 			break
 		}
-		if len(resp.Candidates) == 0 || resp.Candidates[0].Content == nil {
+		respCount++
+
+		if len(resp.Candidates) == 0 {
+			log.Printf("[gemini] resp #%d: no candidates", respCount)
 			continue
 		}
-		for _, part := range resp.Candidates[0].Content.Parts {
+		if resp.Candidates[0].Content == nil {
+			log.Printf("[gemini] resp #%d: nil content (finish_reason=%v)", respCount, resp.Candidates[0].FinishReason)
+			continue
+		}
+
+		parts := resp.Candidates[0].Content.Parts
+		log.Printf("[gemini] resp #%d: %d parts", respCount, len(parts))
+		for i, part := range parts {
+			if part.Thought {
+				log.Printf("[gemini]   part[%d] THOUGHT (skipped) len=%d", i, len(part.Text))
+				continue // never send internal thinking tokens to the user
+			}
+			if part.Text != "" {
+				log.Printf("[gemini]   part[%d] text=%q", i, truncate(part.Text, 80))
+			}
+			if part.FunctionCall != nil {
+				log.Printf("[gemini]   part[%d] function_call=%s args=%v", i, part.FunctionCall.Name, part.FunctionCall.Args)
+			}
 			allParts = append(allParts, part)
 			if part.Text != "" {
 				select {
@@ -71,6 +109,7 @@ func (g *GeminiService) Stream(
 			}
 		}
 	}
+	log.Printf("[gemini] stream complete: %d responses, %d total parts", respCount, len(allParts))
 
 	var calls []ToolCallResult
 	for _, part := range allParts {
@@ -85,7 +124,15 @@ func (g *GeminiService) Stream(
 			})
 		}
 	}
+	log.Printf("[gemini] tool calls extracted: %d", len(calls))
 	toolResults <- calls
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 func (g *GeminiService) Summarize(ctx context.Context, messages []models.ChatMessage) string {
@@ -103,7 +150,7 @@ func (g *GeminiService) Summarize(ctx context.Context, messages []models.ChatMes
 	}
 
 	prompt := "Summarize this medical appointment chat in 2 sentences for AI context continuity:\n\n" + history.String()
-	resp, err := g.client.Models.GenerateContent(ctx, geminiModel,
+	resp, err := g.client.Models.GenerateContent(ctx, geminiModel(),
 		[]*genai.Content{genai.NewContentFromText(prompt, "user")},
 		nil,
 	)
@@ -121,13 +168,25 @@ func (g *GeminiService) Summarize(ctx context.Context, messages []models.ChatMes
 // msgsToGeminiContents converts chat history to Gemini's Content slice.
 // Gemini uses "user" and "model" roles (not "assistant").
 func msgsToGeminiContents(messages []models.ChatMessage) []*genai.Content {
-	contents := make([]*genai.Content, len(messages))
-	for i, m := range messages {
+	var contents []*genai.Content
+	for _, m := range messages {
+		if strings.TrimSpace(m.Content) == "" {
+			continue
+		}
 		role := m.Role
 		if role == "assistant" {
 			role = "model"
 		}
-		contents[i] = genai.NewContentFromText(m.Content, genai.Role(role))
+		// Gemini requires strictly alternating user/model turns.
+		// When the AI makes a tool-only call (no text), no assistant message is
+		// stored, so consecutive user messages appear. Merge them into one turn.
+		if len(contents) > 0 && string(contents[len(contents)-1].Role) == role {
+			last := contents[len(contents)-1]
+			last.Parts = append(last.Parts, &genai.Part{Text: "\n" + m.Content})
+			log.Printf("[gemini] merged consecutive %s messages to maintain alternation", role)
+		} else {
+			contents = append(contents, genai.NewContentFromText(m.Content, genai.Role(role)))
+		}
 	}
 	return contents
 }

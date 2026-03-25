@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/joho/godotenv"
 	"github.com/rs/cors"
 
 	"kyron-medical/handlers"
@@ -18,6 +19,10 @@ import (
 )
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Println("no .env file found, using environment variables")
+	}
+
 	if err := services.InitSessionStore(services.DBPath()); err != nil {
 		log.Fatalf("session store: %v", err)
 	}
@@ -53,6 +58,7 @@ func main() {
 		r.Post("/voice/initiate", voiceHandler.HandleInitiate)
 		r.Post("/voice/webhook", voiceHandler.HandleWebhook)
 		r.Get("/doctors", handlers.HandleDoctors)
+		r.Get("/appointment", handlers.HandleAppointment)
 		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("ok"))
 		})

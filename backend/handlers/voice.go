@@ -20,9 +20,9 @@ func NewVoiceHandler(sessions *services.SessionStore) *VoiceHandler {
 
 // vapiLLMConfig returns the Vapi model block for the active AI provider.
 func vapiLLMConfig(systemPrompt string) map[string]interface{} {
-	provider, model := "anthropic", "claude-sonnet-4-6"
+	provider, model := "anthropic", services.ActiveModel()
 	if os.Getenv("AI_PROVIDER") == "gemini" {
-		provider, model = "google", "gemini-2.0-flash"
+		provider, model = "google", services.ActiveModel()
 	}
 	return map[string]interface{}{
 		"provider": provider,

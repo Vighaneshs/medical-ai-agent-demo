@@ -31,6 +31,15 @@ type AIProvider interface {
 // AI is the active provider. Set by InitAI() at startup.
 var AI AIProvider
 
+// ActiveModel returns the model name for the currently configured provider.
+// Used by the voice handler to build Vapi LLM config.
+func ActiveModel() string {
+	if os.Getenv("AI_PROVIDER") == "gemini" {
+		return geminiModel()
+	}
+	return claudeModel()
+}
+
 // InitAI reads AI_PROVIDER and initialises the correct backend.
 // Defaults to Claude if AI_PROVIDER is unset.
 func InitAI() error {

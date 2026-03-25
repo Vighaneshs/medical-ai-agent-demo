@@ -121,6 +121,19 @@ func (s *SessionStore) GetOrCreate(id string) *models.Session {
 	return sess
 }
 
+// Get retrieves a session without creating one if it doesn't exist.
+func (s *SessionStore) Get(id string) *models.Session {
+	if cached, ok := s.cache.Load(id); ok {
+		return cached.(*models.Session)
+	}
+	sess, err := s.loadFromDB(id)
+	if err != nil || sess == nil {
+		return nil
+	}
+	s.cache.Store(id, sess)
+	return sess
+}
+
 // GetByPhone finds the most recent session for a given phone number (for voice callback).
 func (s *SessionStore) GetByPhone(phone string) *models.Session {
 	row := s.db.QueryRow(

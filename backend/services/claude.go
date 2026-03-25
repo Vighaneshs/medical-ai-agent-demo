@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -15,6 +16,13 @@ import (
 
 type ClaudeService struct {
 	client *anthropic.Client
+}
+
+func claudeModel() string {
+	if m := os.Getenv("CLAUDE_MODEL"); m != "" {
+		return m
+	}
+	return "claude-sonnet-4-6"
 }
 
 func newClaudeService() *ClaudeService {
@@ -42,7 +50,7 @@ func (c *ClaudeService) Stream(
 	}
 
 	stream := c.client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
-		Model:     anthropic.ModelClaudeSonnet4_6,
+		Model:     anthropic.Model(claudeModel()),
 		MaxTokens: 1024,
 		System:    []anthropic.TextBlockParam{{Text: systemPrompt}},
 		Messages:  anthropicMessages,
@@ -66,6 +74,7 @@ func (c *ClaudeService) Stream(
 	}
 
 	if err := stream.Err(); err != nil && ctx.Err() == nil {
+		log.Printf("claude stream error: %v", err)
 		select {
 		case textChunks <- "\n\nI'm having trouble connecting right now. Please try again.":
 		default:

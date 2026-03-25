@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -28,9 +29,12 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 
 	var req models.ChatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.SessionID == "" || req.Message == "" {
+		log.Printf("[chat] bad request: err=%v sessionID=%q message=%q", err, req.SessionID, req.Message)
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
+
+	log.Printf("[chat] session=%s state=%s message=%q", req.SessionID, "", req.Message)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -38,8 +42,10 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no")
 
 	sess := h.sessions.GetOrCreate(req.SessionID)
+	log.Printf("[chat] session=%s state=%s history_len=%d", sess.ID, sess.State, len(sess.Messages))
 
 	if services.IsEmergency(req.Message) {
+		log.Printf("[chat] session=%s EMERGENCY detected", sess.ID)
 		payload := services.EmergencySSEPayload()
 		fmt.Fprintf(w, "data: %s\n\n", payload)
 		flusher.Flush()
@@ -54,23 +60,36 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	textChunks := make(chan string, 100)
 	toolResults := make(chan []services.ToolCallResult, 1)
 
+	log.Printf("[chat] session=%s calling AI.Stream with %d messages", sess.ID, len(sess.Messages))
 	go services.AI.Stream(ctx, systemPrompt, sess.Messages, textChunks, toolResults)
 
 	var assistantText string
+	chunkCount := 0
 	for chunk := range textChunks {
 		if ctx.Err() != nil {
+			log.Printf("[chat] session=%s context cancelled during stream", sess.ID)
 			return
 		}
+		chunkCount++
 		assistantText += chunk
 		data, _ := json.Marshal(models.SSEChunk{Text: chunk})
 		fmt.Fprintf(w, "data: %s\n\n", data)
 		flusher.Flush()
 	}
+	log.Printf("[chat] session=%s stream done: %d chunks, text_len=%d", sess.ID, chunkCount, len(assistantText))
 
 	calls := <-toolResults
-	newState := h.executeToolCalls(sess, calls, r)
+	log.Printf("[chat] session=%s tool_calls=%d", sess.ID, len(calls))
+	for _, c := range calls {
+		log.Printf("[chat] session=%s   tool=%s input=%v", sess.ID, c.ToolName, c.Input)
+	}
 
-	h.sessions.AppendMessage(sess, "assistant", assistantText)
+	newState := h.executeToolCalls(sess, calls, r)
+	log.Printf("[chat] session=%s new_state=%s", sess.ID, newState)
+
+	if assistantText != "" {
+		h.sessions.AppendMessage(sess, "assistant", assistantText)
+	}
 	h.sessions.Save(sess)
 
 	doneEvent := models.SSEDone{Done: true, NewState: string(newState)}

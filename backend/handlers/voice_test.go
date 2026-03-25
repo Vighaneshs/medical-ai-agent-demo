@@ -15,13 +15,14 @@ import (
 
 func TestVapiLLMConfig_DefaultsToAnthropic(t *testing.T) {
 	t.Setenv("AI_PROVIDER", "")
+	t.Setenv("CLAUDE_MODEL", "")
 	cfg := vapiLLMConfig("test prompt")
 
 	if cfg["provider"] != "anthropic" {
 		t.Errorf("provider = %q, want anthropic", cfg["provider"])
 	}
-	if cfg["model"] != "claude-sonnet-4-6" {
-		t.Errorf("model = %q, want claude-sonnet-4-6", cfg["model"])
+	if cfg["model"] != services.ActiveModel() {
+		t.Errorf("model = %q, want %q", cfg["model"], services.ActiveModel())
 	}
 }
 
@@ -36,13 +37,14 @@ func TestVapiLLMConfig_ClaudeExplicit(t *testing.T) {
 
 func TestVapiLLMConfig_Gemini(t *testing.T) {
 	t.Setenv("AI_PROVIDER", "gemini")
+	t.Setenv("GEMINI_MODEL", "")
 	cfg := vapiLLMConfig("test prompt")
 
 	if cfg["provider"] != "google" {
 		t.Errorf("provider = %q, want google", cfg["provider"])
 	}
-	if cfg["model"] != "gemini-2.0-flash" {
-		t.Errorf("model = %q, want gemini-2.0-flash", cfg["model"])
+	if cfg["model"] != services.ActiveModel() {
+		t.Errorf("model = %q, want %q", cfg["model"], services.ActiveModel())
 	}
 }
 
