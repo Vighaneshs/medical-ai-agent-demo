@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -93,21 +94,23 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	// 1. Tool-only turn (no text) — Gemini/Haiku sometimes calls tools silently.
 	// 2. State just moved to MATCHING — the AI said "finding a doctor" but didn't
 	//    call confirm_doctor yet; we need another turn to do the doctor matching.
-	needsContinuation := (assistantText == "" && len(calls) > 0) || newState == models.StateMatching
+	needsContinuation := (assistantText == "" && len(calls) > 0) || newState == models.StateMatching || newState == models.StateBooked
 	for attempt := 1; attempt <= 3 && needsContinuation; attempt++ {
 		if ctx.Err() != nil {
 			return
 		}
 		log.Printf("[chat] session=%s auto-continue attempt=%d state=%s", sess.ID, attempt, sess.State)
 
-		// If there was already text from the previous turn, signal the frontend
-		// to start a new message bubble before streaming the next response.
-		if assistantText != "" {
+		// If there was already meaningful text from the previous turn, signal the
+		// frontend to start a new message bubble before streaming the next response.
+		if strings.TrimSpace(assistantText) != "" {
 			h.sessions.AppendMessage(sess, "assistant", assistantText)
 			assistantText = ""
 			sep, _ := json.Marshal(map[string]bool{"newMessage": true})
 			fmt.Fprintf(w, "data: %s\n\n", sep)
 			flusher.Flush()
+		} else {
+			assistantText = "" // discard whitespace-only text
 		}
 
 		sp := services.Build(sess)
@@ -133,7 +136,7 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		needsContinuation = assistantText == "" && len(calls) > 0
 	}
 
-	if assistantText != "" {
+	if strings.TrimSpace(assistantText) != "" {
 		h.sessions.AppendMessage(sess, "assistant", assistantText)
 	}
 	h.sessions.Save(sess)
