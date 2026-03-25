@@ -9,6 +9,7 @@ interface Props {
   slot: TimeSlot;
   patientName: string;
   onConfirm: (smsOptIn: boolean) => void;
+  onCancel: () => void;
 }
 
 function formatSlot(slot: TimeSlot): string {
@@ -20,7 +21,7 @@ function formatSlot(slot: TimeSlot): string {
   return `${dateStr} at ${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
 }
 
-export function ConfirmationModal({ doctor, slot, patientName, onConfirm }: Props) {
+export function ConfirmationModal({ doctor, slot, patientName, onConfirm, onCancel }: Props) {
   const [smsOptIn, setSmsOptIn] = useState(false);
 
   return (
@@ -73,14 +74,29 @@ export function ConfirmationModal({ doctor, slot, patientName, onConfirm }: Prop
         </button>
       </div>
 
-      <motion.button
-        whileTap={{ scale: 0.96 }}
-        onClick={() => onConfirm(smsOptIn)}
-        className="w-full py-3 rounded-xl text-sm font-semibold text-white"
-        style={{ background: 'var(--success)', cursor: 'pointer' }}
-      >
-        Confirm Booking
-      </motion.button>
+      <div className="flex gap-2">
+        <motion.button
+          whileTap={{ scale: 0.96 }}
+          onClick={onCancel}
+          className="flex-1 py-3 rounded-xl text-sm font-semibold"
+          style={{
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid var(--glass-border)',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+          }}
+        >
+          No, go back
+        </motion.button>
+        <motion.button
+          whileTap={{ scale: 0.96 }}
+          onClick={() => onConfirm(smsOptIn)}
+          className="flex-1 py-3 rounded-xl text-sm font-semibold text-white"
+          style={{ background: 'var(--success)', cursor: 'pointer' }}
+        >
+          Confirm Booking
+        </motion.button>
+      </div>
     </motion.div>
   );
 }

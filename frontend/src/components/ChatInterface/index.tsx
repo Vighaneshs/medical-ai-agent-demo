@@ -36,6 +36,8 @@ export function ChatInterface() {
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
   const [doctorsMap, setDoctorsMap] = useState<Record<string, Doctor>>({});
   const [patientFirstName, setPatientFirstName] = useState('');
+  const [sendError, setSendError] = useState(false);
+  const lastMessageRef = useRef<string>('');
 
   const sessionId = useRef(getOrCreateSessionId());
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -79,11 +81,14 @@ export function ChatInterface() {
       setMessages(prev => [...prev, userMsg]);
     }
 
+    lastMessageRef.current = text;
+    setSendError(false);
     setIsStreaming(true);
     setStreamingText('');
 
     let accumulated = '';
     let isEmergency = false;
+    let failed = false;
 
     try {
       await sendMessage(sessionId.current, text, (chunk) => {
@@ -102,7 +107,8 @@ export function ChatInterface() {
         }
       });
     } catch {
-      accumulated = "I'm having trouble connecting right now. Please try again.";
+      failed = true;
+      setSendError(true);
     }
 
     if (accumulated) {
@@ -114,6 +120,9 @@ export function ChatInterface() {
         isEmergency,
       };
       setMessages(prev => [...prev, aiMsg]);
+    } else if (failed && !isAutoGreeting) {
+      // Remove the user message that got no response so retry is clean
+      setMessages(prev => prev.filter(m => m.id !== userMsg.id));
     }
 
     setStreamingText('');
@@ -159,6 +168,7 @@ export function ChatInterface() {
   // Show scheduling overlays only when not currently streaming a response
   const showSchedulingOverlay = sessionState === 'SCHEDULING' && matchedDoctorId && !isStreaming;
   const showConfirmingOverlay = sessionState === 'CONFIRMING' && matchedDoctor && selectedSlot && !isStreaming;
+  const showMatchingButtons = sessionState === 'MATCHING' && matchedDoctorId && !isStreaming;
 
   return (
     <div className="flex flex-col h-full">
@@ -207,6 +217,34 @@ export function ChatInterface() {
         </AnimatePresence>
 
         <AnimatePresence>
+          {sendError && !isStreaming && (
+            <motion.div
+              key="send-error"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="flex items-center gap-3 px-1"
+            >
+              <span className="text-xs" style={{ color: 'var(--danger)' }}>
+                Something went wrong — no response received.
+              </span>
+              <button
+                onClick={() => handleSend(lastMessageRef.current)}
+                className="text-xs px-3 py-1.5 rounded-lg font-medium"
+                style={{
+                  background: 'rgba(87,125,232,0.12)',
+                  border: '1px solid rgba(87,125,232,0.3)',
+                  color: '#7BA4EF',
+                  cursor: 'pointer',
+                }}
+              >
+                Retry
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
           {sessionState === 'INTAKE' && !isStreaming && (
             <motion.div
               key="intake-form"
@@ -216,6 +254,39 @@ export function ChatInterface() {
               transition={{ duration: 0.2 }}
             >
               <IntakeForm onSubmit={handleSend} disabled={isStreaming} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showMatchingButtons && (
+            <motion.div
+              key="matching-buttons"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              transition={{ duration: 0.2 }}
+              className="flex gap-2 px-1"
+            >
+              <button
+                onClick={() => handleSend('Yes, that doctor looks great')}
+                className="px-5 py-2 rounded-xl text-sm font-semibold text-white transition-opacity"
+                style={{ background: 'var(--success)', cursor: 'pointer' }}
+              >
+                Yes, book this doctor
+              </button>
+              <button
+                onClick={() => handleSend('No, I would like a different doctor')}
+                className="px-5 py-2 rounded-xl text-sm font-semibold transition-opacity"
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid var(--glass-border)',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                }}
+              >
+                No, different doctor
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -284,6 +355,7 @@ export function ChatInterface() {
             slot={selectedSlot}
             patientName={patientFirstName || 'Patient'}
             onConfirm={handleConfirmBooking}
+            onCancel={() => handleSend('No, I want to pick a different time')}
           />
         )}
       </AnimatePresence>

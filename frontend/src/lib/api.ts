@@ -2,7 +2,10 @@ import { SSEChunk } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
-export async function sendMessage(
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1500;
+
+async function attemptSendMessage(
   sessionId: string,
   message: string,
   onChunk: (chunk: SSEChunk) => void,
@@ -14,12 +17,13 @@ export async function sendMessage(
   });
 
   if (!res.ok || !res.body) {
-    throw new Error('Chat request failed');
+    throw new Error(`Chat request failed: ${res.status}`);
   }
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let receivedDone = false;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -30,17 +34,51 @@ export async function sendMessage(
     buffer = lines.pop() ?? '';
 
     for (const rawLine of lines) {
-      const line = rawLine.trimEnd(); // strip \r and trailing whitespace
+      const line = rawLine.trimEnd();
       if (!line.startsWith('data: ')) continue;
       const payload = line.slice(6);
       try {
         const chunk: SSEChunk = JSON.parse(payload);
+        if (chunk.done) receivedDone = true;
         onChunk(chunk);
       } catch {
         console.warn('[SSE] failed to parse chunk:', payload);
       }
     }
   }
+
+  if (!receivedDone) {
+    throw new Error('Stream ended without done event');
+  }
+}
+
+export async function sendMessage(
+  sessionId: string,
+  message: string,
+  onChunk: (chunk: SSEChunk) => void,
+): Promise<void> {
+  let lastError: Error = new Error('Unknown error');
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      await attemptSendMessage(sessionId, message, onChunk);
+      return;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(`[chat] attempt ${attempt}/${MAX_RETRIES} failed:`, lastError.message);
+
+      // Don't retry on 4xx client errors — they won't recover
+      if (lastError.message.includes('400') || lastError.message.includes('401')) {
+        break;
+      }
+
+      if (attempt < MAX_RETRIES) {
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * attempt));
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 export async function getAvailability(doctorId: string) {
