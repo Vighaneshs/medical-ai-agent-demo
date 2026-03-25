@@ -4,6 +4,13 @@ set -e
 APP_DIR="/home/ubuntu/app"
 DOMAIN="${DOMAIN:-yourdomain.com}"
 
+# REPO_URL is required — pass it as an environment variable:
+#   DOMAIN=kyron.example.com REPO_URL=https://github.com/you/repo sudo -E bash deploy.sh
+if [ -z "$REPO_URL" ]; then
+  echo "ERROR: REPO_URL is not set. Run: REPO_URL=https://github.com/you/repo DOMAIN=yourdomain.com sudo -E bash deploy.sh"
+  exit 1
+fi
+
 echo "=== Kyron Medical — EC2 Deploy ==="
 
 # ── System packages ───────────────────────────────────────────────────────────
@@ -18,13 +25,10 @@ if ! command -v go &>/dev/null; then
   export PATH=$PATH:/usr/local/go/bin
 fi
 
-# ── Node 20 via nvm ───────────────────────────────────────────────────────────
+# ── Node 20 via NodeSource apt (reliable in non-interactive scripts) ───────────
 if ! command -v node &>/dev/null; then
-  curl -s -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-  export NVM_DIR="$HOME/.nvm"
-  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-  nvm install 20
-  nvm use 20
+  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  apt-get install -y nodejs
 fi
 
 npm install -g pm2
@@ -36,17 +40,19 @@ else
   git clone "$REPO_URL" "$APP_DIR"
 fi
 
-# ── Copy env file ─────────────────────────────────────────────────────────────
-if [ ! -f "$APP_DIR/.env" ]; then
-  cp "$APP_DIR/.env.example" "$APP_DIR/.env"
-  echo ">>> EDIT $APP_DIR/.env with your API keys before continuing"
+# ── Check env files ───────────────────────────────────────────────────────────
+if [ ! -f "$APP_DIR/backend/.env" ]; then
+  echo ">>> EDIT $APP_DIR/backend/.env with your API keys before continuing"
+  echo "    Copy backend/.env from your local machine: scp backend/.env ubuntu@<ip>:$APP_DIR/backend/.env"
   exit 1
 fi
 
-# Source env for build steps
-set -a
-source "$APP_DIR/.env"
-set +a
+if [ ! -f "$APP_DIR/frontend/.env.local" ]; then
+  echo "NEXT_PUBLIC_API_URL=https://$DOMAIN" > "$APP_DIR/frontend/.env.local"
+  echo "NEXT_PUBLIC_VAPI_PUBLIC_KEY=" >> "$APP_DIR/frontend/.env.local"
+  echo ">>> EDIT $APP_DIR/frontend/.env.local and add NEXT_PUBLIC_VAPI_PUBLIC_KEY, then re-run this script"
+  exit 1
+fi
 
 # ── Build Go backend ──────────────────────────────────────────────────────────
 cd "$APP_DIR/backend"
