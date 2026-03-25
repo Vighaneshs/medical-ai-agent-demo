@@ -217,7 +217,7 @@ export function ChatInterface() {
           {messages.map(msg => (
             <MessageBubble key={msg.id} message={msg} />
           ))}
-          {isStreaming && streamingText ? (
+          {isStreaming && streamingText.trim() ? (
             <MessageBubble
               key="streaming"
               message={{

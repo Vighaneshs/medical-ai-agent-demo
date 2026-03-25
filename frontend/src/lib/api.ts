@@ -9,6 +9,7 @@ async function attemptSendMessage(
   sessionId: string,
   message: string,
   onChunk: (chunk: SSEChunk) => void,
+  receivedData: { flag: boolean },
 ): Promise<void> {
   const res = await fetch(`${API_URL}/api/chat`, {
     method: 'POST',
@@ -39,6 +40,7 @@ async function attemptSendMessage(
       const payload = line.slice(6);
       try {
         const chunk: SSEChunk = JSON.parse(payload);
+        receivedData.flag = true;
         if (chunk.done) receivedDone = true;
         onChunk(chunk);
       } catch {
@@ -58,19 +60,22 @@ export async function sendMessage(
   onChunk: (chunk: SSEChunk) => void,
 ): Promise<void> {
   let lastError: Error = new Error('Unknown error');
+  const receivedData = { flag: false };
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      await attemptSendMessage(sessionId, message, onChunk);
+      await attemptSendMessage(sessionId, message, onChunk, receivedData);
       return;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       console.warn(`[chat] attempt ${attempt}/${MAX_RETRIES} failed:`, lastError.message);
 
+      // Don't retry if we already received partial data — retrying would re-fire onChunk
+      // for the same events, creating duplicate or extra message bubbles.
+      if (receivedData.flag) break;
+
       // Don't retry on 4xx client errors — they won't recover
-      if (lastError.message.includes('400') || lastError.message.includes('401')) {
-        break;
-      }
+      if (lastError.message.includes('400') || lastError.message.includes('401')) break;
 
       if (attempt < MAX_RETRIES) {
         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * attempt));

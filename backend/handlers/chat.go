@@ -94,7 +94,7 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	// 1. Tool-only turn (no text) — Gemini/Haiku sometimes calls tools silently.
 	// 2. State just moved to MATCHING — the AI said "finding a doctor" but didn't
 	//    call confirm_doctor yet; we need another turn to do the doctor matching.
-	needsContinuation := (assistantText == "" && len(calls) > 0) || newState == models.StateMatching || newState == models.StateBooked
+	needsContinuation := (strings.TrimSpace(assistantText) == "" && len(calls) > 0) || newState == models.StateMatching || newState == models.StateBooked
 	for attempt := 1; attempt <= 3 && needsContinuation; attempt++ {
 		if ctx.Err() != nil {
 			return
@@ -132,8 +132,10 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 			newState = h.executeToolCalls(sess, calls, r)
 		}
 		log.Printf("[chat] session=%s continuation attempt=%d done: text_len=%d new_state=%s", sess.ID, attempt, len(assistantText), newState)
-		// After first iteration, only continue for silent tool-only turns
-		needsContinuation = assistantText == "" && len(calls) > 0
+		// Continue if: (a) silent tool-only turn, or (b) transitioned into a state that
+		// requires a follow-up text response but produced no meaningful text yet.
+		needsFollowUp := newState == models.StateMatching || newState == models.StateScheduling || newState == models.StateBooked
+		needsContinuation = strings.TrimSpace(assistantText) == "" && (len(calls) > 0 || needsFollowUp)
 	}
 
 	if strings.TrimSpace(assistantText) != "" {
