@@ -138,6 +138,19 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		needsContinuation = strings.TrimSpace(assistantText) == "" && (len(calls) > 0 || needsFollowUp)
 	}
 
+	// Fallback: if the booking was confirmed but the AI produced no text (e.g. silent
+	// tool-only turn), synthesise a confirmation message so the patient always sees one.
+	if strings.TrimSpace(assistantText) == "" && sess.State == models.StateBooked && sess.Appointment != nil {
+		apptID := sess.Appointment.ID[:8]
+		fallback := fmt.Sprintf("Your appointment is confirmed! Confirmation #%s — a confirmation has been sent to %s. See you soon, %s!",
+			apptID, sess.PatientInfo.Email, sess.PatientInfo.FirstName)
+		assistantText = fallback
+		data, _ := json.Marshal(models.SSEChunk{Text: fallback})
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+		log.Printf("[chat] session=%s BOOKED fallback message injected", sess.ID)
+	}
+
 	if strings.TrimSpace(assistantText) != "" {
 		h.sessions.AppendMessage(sess, "assistant", assistantText)
 	}

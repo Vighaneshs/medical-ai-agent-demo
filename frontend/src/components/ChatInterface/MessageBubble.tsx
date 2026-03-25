@@ -13,9 +13,9 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16, scale: 0.96 }}
+      initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.28, ease: 'easeOut' }}
+      transition={{ type: 'spring', damping: 20, stiffness: 250 }}
       className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
     >
       {/* Avatar */}
@@ -23,9 +23,9 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
         className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold mt-1"
         style={{
           background: isUser
-            ? 'rgba(87, 125, 232, 0.3)'
-            : 'linear-gradient(135deg, #577DE8, #48ACF0)',
-          border: '1px solid rgba(255,255,255,0.15)',
+            ? 'rgba(0, 210, 255, 0.15)'
+            : 'linear-gradient(135deg, var(--primary), var(--primary-dark))',
+          border: '1px solid rgba(255,255,255,0.2)',
           fontSize: '10px',
         }}
       >

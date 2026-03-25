@@ -33,21 +33,22 @@ export function NavBar() {
     <nav
       className="w-full flex items-center px-6 gap-6 border-b"
       style={{
-        height: 'var(--nav-height)',
-        background: 'rgba(18, 23, 35, 0.85)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
-        borderColor: 'var(--glass-border)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 50,
-      }}
-    >
-      {/* Brand */}
-      <Link href="/" className="flex items-center gap-2 mr-4 flex-shrink-0">
-        <div
-          className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold"
-          style={{ background: 'linear-gradient(135deg, #577DE8, #48ACF0)' }}
+          height: 'var(--nav-height)',
+          background: 'rgba(8, 12, 22, 0.65)',
+          backdropFilter: 'blur(24px) saturate(1.8)',
+          WebkitBackdropFilter: 'blur(24px) saturate(1.8)',
+          borderColor: 'var(--glass-border)',
+          boxShadow: '0 4px 30px rgba(0, 0, 0, 0.3)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 50,
+        }}
+      >
+        {/* Brand */}
+        <Link href="/" className="flex items-center gap-2 mr-4 flex-shrink-0 group">
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shadow-[0_0_15px_rgba(0,210,255,0.3)] transition-transform group-hover:scale-105"
+            style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))', color: '#fff' }}
         >
           K
         </div>
@@ -58,16 +59,17 @@ export function NavBar() {
       {!isLoginPage && links.map(({ href, label }) => {
         const isActive = pathname === href;
         return (
-          <Link
-            key={href}
-            href={href}
-            className="text-sm font-medium transition-colors"
-            style={{
-              color: isActive ? '#7BA4EF' : 'var(--text-muted)',
-              borderBottom: isActive ? '2px solid #577DE8' : '2px solid transparent',
-              paddingBottom: '2px',
-            }}
-          >
+            <Link
+              key={href}
+              href={href}
+              className="text-sm font-medium transition-all hover:text-white"
+              style={{
+                color: isActive ? 'var(--text)' : 'var(--text-muted)',
+                borderBottom: isActive ? '2px solid var(--primary)' : '2px solid transparent',
+                textShadow: isActive ? '0 0 10px rgba(0,210,255,0.3)' : 'none',
+                paddingBottom: '2px',
+              }}
+            >
             {label}
           </Link>
         );
