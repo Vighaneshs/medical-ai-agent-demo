@@ -470,10 +470,12 @@ func (h *VoiceHandler) HandleToolCall(w http.ResponseWriter, r *http.Request) {
 		ids = append(ids, func() string { s, _ := tc["id"].(string); return s }())
 		fn, _ := tc["function"].(map[string]interface{})
 		name, _ := fn["name"].(string)
-		argsStr, _ := fn["arguments"].(string)
+		argsStr, isStr := fn["arguments"].(string)
 		var input map[string]interface{}
-		if argsStr != "" {
+		if isStr && argsStr != "" {
 			json.Unmarshal([]byte(argsStr), &input)
+		} else if argsMap, isMap := fn["arguments"].(map[string]interface{}); isMap {
+			input = argsMap
 		}
 		// Voice-specific fix: confirm_doctor often arrives with empty doctorId because
 		// the LLM omits the field even when an enum is configured. Resolve it here
