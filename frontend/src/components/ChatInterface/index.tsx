@@ -74,8 +74,8 @@ export function ChatInterface() {
         return newState;
       });
 
-      if (snap.doctorId) setMatchedDoctorId(snap.doctorId);
-      if (snap.selectedSlot) setSelectedSlot(snap.selectedSlot);
+      setMatchedDoctorId(snap.doctorId || null);
+      setSelectedSlot(snap.selectedSlot || null);
     } catch {
       // Session not found or network error — silently ignore
     }
@@ -110,8 +110,8 @@ export function ChatInterface() {
         if (data && data.messages && data.messages.length > 0) {
           setMessages(data.messages);
           if (data.state) setSessionState(data.state as SessionState);
-          if (data.doctorId) setMatchedDoctorId(data.doctorId);
-          if (data.selectedSlot) setSelectedSlot(data.selectedSlot);
+          setMatchedDoctorId(data.doctorId || null);
+          setSelectedSlot(data.selectedSlot || null);
           if (data.patientFirstName) setPatientFirstName(data.patientFirstName);
         } else {
           handleSend('Hello');
@@ -175,8 +175,8 @@ export function ChatInterface() {
         if (chunk.done) {
           console.debug('[chat] done', chunk);
           if (chunk.newState) setSessionState(chunk.newState as SessionState);
-          if (chunk.doctorId) setMatchedDoctorId(chunk.doctorId);
-          if (chunk.selectedSlot) setSelectedSlot(chunk.selectedSlot);
+          setMatchedDoctorId(chunk.doctorId || null);
+          setSelectedSlot(chunk.selectedSlot || null);
         }
       });
     } catch {

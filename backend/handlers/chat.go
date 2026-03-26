@@ -269,9 +269,9 @@ func executeToolCalls(sess *models.Session, calls []services.ToolCallResult) (mo
 			}
 
 		case "reject_doctor":
-			log.Printf("[chat] session=%s reject_doctor: resetting to INTAKE from MATCHING", sess.ID)
+			log.Printf("[chat] session=%s reject_doctor: resetting MatchedDoctor to nil, staying in MATCHING", sess.ID)
 			sess.MatchedDoctor = nil
-			sess.State = models.StateIntake
+			sess.State = models.StateMatching
 
 		case "cancel_scheduling":
 			log.Printf("[chat] session=%s cancel_scheduling: reverting from %s to MATCHING", sess.ID, sess.State)
@@ -285,11 +285,11 @@ func executeToolCalls(sess *models.Session, calls []services.ToolCallResult) (mo
 			sess.State = models.StateScheduling
 
 		case "restart_booking_flow":
-			log.Printf("[chat] session=%s restart_booking_flow: resetting everything to INTAKE", sess.ID)
+			log.Printf("[chat] session=%s restart_booking_flow: resetting everything to GREETING", sess.ID)
 			sess.SelectedSlot = nil
 			sess.MatchedDoctor = nil
 			sess.Appointment = nil
-			sess.State = models.StateIntake
+			sess.State = models.StateGreeting
 
 		case "select_slot":
 			if sess.State != models.StateScheduling {
