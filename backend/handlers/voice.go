@@ -197,14 +197,12 @@ const voicePreamble = `VOICE MODE — YOU ARE SPEAKING ALOUD:
 
 `
 
-// vapiLLMConfig returns the Vapi model block for the active AI provider,
-// including conversation history so the voice agent picks up mid-conversation.
+// vapiLLMConfig returns the Vapi model override block containing only the
+// dynamic system prompt and conversation history. Provider and model name are
+// intentionally omitted so Vapi uses whatever model is configured in the
+// dashboard — this avoids Vapi silently falling back to a weak default when
+// it doesn't recognise a model string.
 func vapiLLMConfig(systemPrompt string, history []models.ChatMessage) map[string]interface{} {
-	provider, model := "anthropic", services.ActiveModel()
-	if os.Getenv("AI_PROVIDER") == "gemini" {
-		provider, model = "google", services.ActiveModel()
-	}
-
 	// System prompt first (with voice-mode preamble), then last 20 turns of chat history as context
 	msgs := []map[string]string{
 		{"role": "system", "content": voicePreamble + systemPrompt},
@@ -224,8 +222,6 @@ func vapiLLMConfig(systemPrompt string, history []models.ChatMessage) map[string
 	}
 
 	return map[string]interface{}{
-		"provider": provider,
-		"model":    model,
 		"messages": msgs,
 	}
 }

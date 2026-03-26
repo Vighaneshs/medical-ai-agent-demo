@@ -15,43 +15,22 @@ import (
 
 // ─── vapiLLMConfig ────────────────────────────────────────────────────────────
 
-func TestVapiLLMConfig_DefaultsToAnthropic(t *testing.T) {
-	t.Setenv("AI_PROVIDER", "")
-	t.Setenv("CLAUDE_MODEL", "")
+func TestVapiLLMConfig_NoProviderOrModel(t *testing.T) {
 	cfg := vapiLLMConfig("test prompt", nil)
 
-	if cfg["provider"] != "anthropic" {
-		t.Errorf("provider = %q, want anthropic", cfg["provider"])
+	// Provider and model are intentionally absent — Vapi uses the dashboard model.
+	if _, ok := cfg["provider"]; ok {
+		t.Error("provider should not be set in vapiLLMConfig — use dashboard model")
 	}
-	if cfg["model"] != services.ActiveModel() {
-		t.Errorf("model = %q, want %q", cfg["model"], services.ActiveModel())
+	if _, ok := cfg["model"]; ok {
+		t.Error("model should not be set in vapiLLMConfig — use dashboard model")
 	}
-}
-
-func TestVapiLLMConfig_ClaudeExplicit(t *testing.T) {
-	t.Setenv("AI_PROVIDER", "claude")
-	cfg := vapiLLMConfig("test prompt", nil)
-
-	if cfg["provider"] != "anthropic" {
-		t.Errorf("provider = %q, want anthropic", cfg["provider"])
-	}
-}
-
-func TestVapiLLMConfig_Gemini(t *testing.T) {
-	t.Setenv("AI_PROVIDER", "gemini")
-	t.Setenv("GEMINI_MODEL", "")
-	cfg := vapiLLMConfig("test prompt", nil)
-
-	if cfg["provider"] != "google" {
-		t.Errorf("provider = %q, want google", cfg["provider"])
-	}
-	if cfg["model"] != services.ActiveModel() {
-		t.Errorf("model = %q, want %q", cfg["model"], services.ActiveModel())
+	if _, ok := cfg["messages"]; !ok {
+		t.Error("messages must be present in vapiLLMConfig")
 	}
 }
 
 func TestVapiLLMConfig_ContainsSystemPrompt(t *testing.T) {
-	t.Setenv("AI_PROVIDER", "claude")
 	cfg := vapiLLMConfig("You are a helpful assistant.", nil)
 
 	msgs, ok := cfg["messages"].([]map[string]string)
@@ -69,7 +48,6 @@ func TestVapiLLMConfig_ContainsSystemPrompt(t *testing.T) {
 // TestVapiLLMConfig_WithHistory verifies that chat history messages are
 // appended to the messages array after the system prompt.
 func TestVapiLLMConfig_WithHistory(t *testing.T) {
-	t.Setenv("AI_PROVIDER", "claude")
 	history := []models.ChatMessage{
 		{Role: "user", Content: "I need an appointment"},
 		{Role: "assistant", Content: "Sure, let me help you with that."},
@@ -99,8 +77,6 @@ func TestVapiLLMConfig_WithHistory(t *testing.T) {
 // TestVapiLLMConfig_HistoryTruncatedTo20 verifies that only the last 20
 // messages from history are included when history exceeds 20 items.
 func TestVapiLLMConfig_HistoryTruncatedTo20(t *testing.T) {
-	t.Setenv("AI_PROVIDER", "claude")
-
 	// Build 25 history messages
 	history := make([]models.ChatMessage, 25)
 	for i := range history {
@@ -137,7 +113,6 @@ func TestVapiLLMConfig_HistoryTruncatedTo20(t *testing.T) {
 // TestVapiLLMConfig_EmptyHistory verifies that with empty history, only the
 // system prompt message is included in the messages array.
 func TestVapiLLMConfig_EmptyHistory(t *testing.T) {
-	t.Setenv("AI_PROVIDER", "claude")
 	cfg := vapiLLMConfig("only system", []models.ChatMessage{})
 
 	msgs, ok := cfg["messages"].([]map[string]string)
@@ -155,7 +130,6 @@ func TestVapiLLMConfig_EmptyHistory(t *testing.T) {
 // TestVapiLLMConfig_EmptyMessagesFiltered verifies that history messages with
 // an empty Content field are excluded from the messages array.
 func TestVapiLLMConfig_EmptyMessagesFiltered(t *testing.T) {
-	t.Setenv("AI_PROVIDER", "claude")
 	history := []models.ChatMessage{
 		{Role: "user", Content: "Hello"},
 		{Role: "assistant", Content: ""},   // empty — should be filtered
@@ -182,7 +156,6 @@ func TestVapiLLMConfig_EmptyMessagesFiltered(t *testing.T) {
 // TestVapiLLMConfig_RolesPreserved verifies that "user" and "assistant" roles
 // from the history are passed through unmodified.
 func TestVapiLLMConfig_RolesPreserved(t *testing.T) {
-	t.Setenv("AI_PROVIDER", "claude")
 	history := []models.ChatMessage{
 		{Role: "user", Content: "user message"},
 		{Role: "assistant", Content: "assistant message"},
