@@ -74,7 +74,7 @@ func voiceToolResult(sess *models.Session, toolName string, errs []string) strin
 		)
 	case "confirm_doctor":
 		if sess.MatchedDoctor != nil {
-			return fmt.Sprintf("Doctor confirmed: %s (%s). NEXT: ask the patient what day of the week and approximate time of day works best for them (e.g. \"What day works best for you — earlier in the week or later? And do you prefer mornings or afternoons?\"). Do NOT read out the full list of slots. Once they express a preference, silently find the closest available slot from your system prompt that matches, then call select_slot with date (YYYY-MM-DD) and startTime (HH:MM).", sess.MatchedDoctor.Name, sess.MatchedDoctor.Specialty)
+			return fmt.Sprintf("Doctor confirmed: %s (%s). NEXT: ask the patient what day of the week and approximate time of day works best for them (e.g. \"What day works best for you — earlier in the week or later? And do you prefer mornings or afternoons?\"). Do NOT read out the full list of slots. Once they express a preference, silently find the closest available slot from your system prompt that matches, then call select_slot with date (YYYY-MM-DD) and startTime (HH:MM). IMPORTANT: You MUST call select_slot and receive a successful result BEFORE saying anything about the slot being saved. Do not say 'I have you booked' or 'locked in' until select_slot returns success.", sess.MatchedDoctor.Name, sess.MatchedDoctor.Specialty)
 		}
 	case "log_prescription_request":
 		return "Prescription request logged. Tell the patient their request has been received and the pharmacy will be contacted. Ask if there is anything else you can help with."
@@ -111,9 +111,10 @@ const voicePreamble = `VOICE MODE — YOU ARE SPEAKING ALOUD:
 BOOKING FLOW — always follow this sequence, using tool results to guide each step:
 1. begin_intake → collect all 6 fields → collect_intake
 2. confirm_doctor (use exact doctor ID from the doctor list)
-3. Ask patient for their preferred day/time — do NOT list all slots. Once they express a preference, silently pick the nearest matching available slot and call select_slot. IMPORTANT: date MUST be YYYY-MM-DD (e.g. "2026-04-01") and startTime MUST be HH:MM 24-hour (e.g. "09:00") — look up the exact values from the available slots in your system prompt, do not guess or write them out as natural language.
-4. confirm_booking (smsOptIn true/false) — MUST be called before telling patient they are booked
-Never skip a step. Never tell the patient their appointment is confirmed until confirm_booking returns SUCCESS.
+3. Ask patient for their preferred day/time — do NOT list all slots. Once they express a preference, silently pick the nearest matching available slot from your system prompt and call select_slot. CRITICAL: You MUST call select_slot and receive a successful tool result before saying anything about the slot being saved. The slot is NOT saved until select_slot returns success. IMPORTANT: date MUST be YYYY-MM-DD (e.g. "2026-04-01") and startTime MUST be HH:MM 24-hour (e.g. "09:00") — look up the exact values from the available slots in your system prompt, do not guess.
+4. After select_slot succeeds: read back the booking summary (doctor, date, time) and ask "Shall I confirm this appointment?"
+5. confirm_booking (smsOptIn true/false) — MUST be called before telling patient they are booked. Do NOT say "confirmed" or "all set" until confirm_booking returns SUCCESS.
+Never skip a step. The appointment does not exist until confirm_booking succeeds.
 
 `
 
