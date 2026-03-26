@@ -122,7 +122,7 @@ Tell the patient the matched doctor's name, specialty, and briefly explain why t
 
 If the patient asks a clarifying question, simply answer it naturally.
 If the patient explicitly says NO to the matched doctor or wants someone else, acknowledge it and immediately call the reject_doctor tool. This will clear the doctor without forcing them to re-enter their intake form.
-When the patient says yes, call confirm_doctor with the doctorId (in the same response as your acknowledgement text).
+When the patient says yes, call confirm_doctor with the EXACT doctorId string from the list above (e.g. "dr-mitchell"). Do NOT use the doctor's name — use only the ID field shown in parentheses.
 If they want to cancel the entire appointment process and go back to the hub, call restart_booking_flow.
 `,
 			sess.PatientInfo.FirstName, sess.PatientInfo.LastName,

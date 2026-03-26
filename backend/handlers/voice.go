@@ -21,40 +21,45 @@ import (
 // back to the LLM as the tool's return value.
 func voiceToolResult(sess *models.Session, toolName string, errs []string) string {
 	if len(errs) > 0 {
+		// For select_slot errors in voice context, guide the agent to ask for a
+		// different preference rather than reciting the full availability list.
+		if toolName == "select_slot" {
+			return "That time slot is not available. Ask the patient if they have another day or time preference, then find the nearest available slot and call select_slot again."
+		}
 		return errs[0]
 	}
 	switch toolName {
 	case "begin_intake":
-		return "Done. Ask the patient for their first name, last name, date of birth, phone, email, and reason for visit."
+		return "Intake flow started. Collect ALL of the following from the patient one by one: first name, last name, date of birth (YYYY-MM-DD), phone number, email address, and reason for visit. Once you have ALL six fields confirmed, call collect_intake."
 	case "begin_prescription":
-		return "Done. Ask the patient for their medication name and pharmacy details."
+		return "Prescription flow started. Ask for: medication name (required), prescribing doctor's name, pharmacy name (required), and pharmacy phone. Once collected, call log_prescription_request."
 	case "show_office_info":
-		return "Done. Provide the office hours and location to the patient."
+		return "Done. Tell the patient: our office is open Monday to Friday, 9 AM to 5 PM. We are located at 123 Medical Drive. Then ask if there is anything else you can help with."
 	case "collect_intake":
-		return fmt.Sprintf("Patient details saved for %s %s. Now find the best specialist for their concern.", sess.PatientInfo.FirstName, sess.PatientInfo.LastName)
+		return fmt.Sprintf("Intake saved for %s %s. NEXT: tell the patient you are finding the best specialist for their concern, then pick the most appropriate doctor from your system prompt and present them by name and specialty. Ask: \"Would you like to schedule with [Dr. Name]?\" When they say yes, call confirm_doctor with the exact doctor ID string.", sess.PatientInfo.FirstName, sess.PatientInfo.LastName)
 	case "confirm_doctor":
 		if sess.MatchedDoctor != nil {
-			return fmt.Sprintf("Doctor confirmed: %s, %s. Present available time slots to the patient.", sess.MatchedDoctor.Name, sess.MatchedDoctor.Specialty)
+			return fmt.Sprintf("Doctor confirmed: %s (%s). NEXT: ask the patient what day of the week and approximate time of day works best for them (e.g. \"What day works best for you — earlier in the week or later? And do you prefer mornings or afternoons?\"). Do NOT read out the full list of slots. Once they express a preference, silently find the closest available slot from your system prompt that matches, then call select_slot with date (YYYY-MM-DD) and startTime (HH:MM).", sess.MatchedDoctor.Name, sess.MatchedDoctor.Specialty)
 		}
 	case "select_slot":
 		if sess.SelectedSlot != nil {
-			return fmt.Sprintf("Slot saved: %s at %s. Ask the patient to confirm the booking and whether they want an SMS reminder.", sess.SelectedSlot.Date, sess.SelectedSlot.StartTime)
+			return fmt.Sprintf("Slot saved: %s at %s. NEXT: read back the full booking summary — doctor name, date, and time. Ask: \"Shall I confirm this appointment? And would you like SMS reminders?\" When patient says yes, you MUST immediately call confirm_booking with smsOptIn=true or false. Do NOT say the appointment is confirmed until confirm_booking succeeds.", sess.SelectedSlot.Date, sess.SelectedSlot.StartTime)
 		}
 	case "confirm_booking":
 		if sess.Appointment != nil {
-			return fmt.Sprintf("SUCCESS — appointment is now saved in our system. Confirmation number: %s. Tell the patient exactly this: their appointment is confirmed, their confirmation number is %s, and a confirmation email has been sent to %s. Then ask if there is anything else you can help with.", sess.Appointment.ID[:8], sess.Appointment.ID[:8], sess.Appointment.Patient.Email)
+			return fmt.Sprintf("SUCCESS. Appointment confirmed. Confirmation number: %s. Tell the patient: \"Your appointment is confirmed. Your confirmation number is %s and a confirmation email has been sent to %s.\" Ask if there is anything else you can help with.", sess.Appointment.ID[:8], sess.Appointment.ID[:8], sess.Appointment.Patient.Email)
 		}
-		return "ERROR — booking failed, appointment was not saved. Apologise to the patient and offer to try again."
+		return "ERROR — booking failed. Tell the patient there was an issue saving the appointment and ask if they would like to try again. If yes, call confirm_booking again."
 	case "log_prescription_request":
-		return "Prescription request logged. Let the patient know their request has been received."
+		return "Prescription request logged. Tell the patient their request has been received and the pharmacy will be contacted. Ask if there is anything else you can help with."
 	case "reject_doctor":
-		return "Doctor rejected. Ask the patient for different symptoms so we can find another specialist."
+		return "Doctor rejected. Tell the patient you will find another specialist. Ask them to describe their symptoms again or clarify what kind of doctor they are looking for, then pick a different doctor and present them."
 	case "cancel_scheduling":
-		return "Scheduling cancelled. Ask the patient if they want to choose a different doctor."
+		return "Scheduling cancelled. Ask the patient if they would like to choose a different doctor or restart the booking process."
 	case "cancel_selection":
-		return "Selection cancelled. Read the previous available time slots to the patient again."
+		return "Slot selection cancelled. Ask the patient what day and time would work better for them, then find the nearest available slot and call select_slot again."
 	case "restart_booking_flow":
-		return "Booking flow restarted. Ask the patient for their symptoms again."
+		return "Booking restarted. Greet the patient fresh and ask how you can help them today."
 	}
 	return "Done."
 }
@@ -71,11 +76,18 @@ func NewVoiceHandler(sessions *services.SessionStore) *VoiceHandler {
 // It overrides the chat-oriented tool-mention instructions so Claude never
 // narrates tool names or "Tool call" phrases aloud through the TTS engine.
 const voicePreamble = `VOICE MODE — YOU ARE SPEAKING ALOUD:
-- NEVER say tool names (begin_intake, collect_intake, confirm_doctor, select_slot, confirm_booking, etc.) in your spoken responses.
-- NEVER say "I'm calling a tool", "Tool call", or reference function names in any way.
+- NEVER say tool names or reference function names in your spoken responses.
+- NEVER say "I'm calling a tool" or "Tool call".
 - Tools MUST still be called — you just don't narrate them. The action does not happen unless the tool is invoked. Never skip a required tool call.
-- Keep each spoken turn SHORT — 1–3 sentences maximum. Long responses are hard to listen to.
+- Keep each spoken turn SHORT — 1–3 sentences maximum.
 - Speak conversationally, as if on a phone call.
+
+BOOKING FLOW — always follow this sequence, using tool results to guide each step:
+1. begin_intake → collect all 6 fields → collect_intake
+2. confirm_doctor (use exact doctor ID from the doctor list)
+3. Ask patient for their preferred day/time — do NOT list all slots. Once they express a preference, silently pick the nearest matching available slot and call select_slot (date YYYY-MM-DD, startTime HH:MM).
+4. confirm_booking (smsOptIn true/false) — MUST be called before telling patient they are booked
+Never skip a step. Never tell the patient their appointment is confirmed until confirm_booking returns SUCCESS.
 
 `
 
@@ -453,8 +465,46 @@ func (h *VoiceHandler) HandleToolCall(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[voice/tool] session=%s tool=%s result=%q", sessionID, c.ToolName, result)
 	}
 
+	// Inject updated system prompt into the active call so the LLM always has
+	// the correct state context — this fixes the "fixed system prompt" problem.
+	if callID, _ := call["id"].(string); callID != "" {
+		go injectSystemMessage(callID, services.Build(sess))
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"results": results})
+}
+
+// injectSystemMessage pushes an updated system prompt into an active Vapi call.
+// This keeps the LLM's context in sync as session state changes mid-call —
+// e.g. after collect_intake the LLM gets the MATCHING state instructions,
+// after confirm_doctor it gets SCHEDULING instructions with available slots.
+func injectSystemMessage(callID, systemPrompt string) {
+	vapiKey := os.Getenv("VAPI_PRIVATE_KEY")
+	if vapiKey == "" {
+		return
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"role":    "system",
+		"content": voicePreamble + systemPrompt,
+	})
+	url := "https://api.vapi.ai/call/" + callID + "/message"
+	req, err := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewReader(body))
+	if err != nil {
+		log.Printf("[voice/inject] failed to build request: %v", err)
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+vapiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[voice/inject] call=%s error: %v", callID, err)
+		return
+	}
+	defer resp.Body.Close()
+	log.Printf("[voice/inject] call=%s status=%d", callID, resp.StatusCode)
 }
 
 // mapKeys returns the keys of a map for logging; nil-safe.
