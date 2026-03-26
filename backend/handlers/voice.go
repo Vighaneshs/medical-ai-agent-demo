@@ -318,6 +318,8 @@ func (h *VoiceHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msg, _ := payload["message"].(map[string]interface{})
+	msgType, _ := msg["type"].(string)
+
 	var call map[string]interface{}
 	if msg != nil {
 		call, _ = msg["call"].(map[string]interface{})
@@ -331,6 +333,22 @@ func (h *VoiceHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		if customer, ok := call["customer"].(map[string]interface{}); ok {
 			callerPhone, _ = customer["number"].(string)
 		}
+	}
+
+	if msgType == "end-of-call-report" {
+		if callerPhone != "" {
+			if sess := h.sessions.GetByPhone(callerPhone); sess != nil {
+				endedReason, _ := call["endedReason"].(string)
+				if strings.Contains(endedReason, "error") || endedReason == "silence-timeout" || endedReason == "assistant-error" {
+					sess.LastCallDroppedAt = time.Now()
+				} else {
+					sess.LastCallDroppedAt = time.Time{}
+				}
+				h.sessions.Save(sess)
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+		return
 	}
 
 	overrides := map[string]interface{}{}
@@ -353,8 +371,17 @@ func (h *VoiceHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 
 		systemPrompt := services.Build(sess)
 
+		firstMsg := buildVoiceFirstMessage(sess, true)
+
+		// Check if the previous call was dropped recently (e.g. within 30 minutes)
+		if !sess.LastCallDroppedAt.IsZero() && time.Since(sess.LastCallDroppedAt) < 30*time.Minute {
+			firstMsg = "Looks like we got disconnected. Want to continue exactly where we left off?"
+			sess.LastCallDroppedAt = time.Time{} // Reset after handling
+			h.sessions.Save(sess)
+		}
+
 		overrides = map[string]interface{}{
-			"firstMessage": buildVoiceFirstMessage(sess, true),
+			"firstMessage": firstMsg,
 			"model":        vapiLLMConfig(systemPrompt, sess.Messages),
 			"metadata":     map[string]string{"sessionId": sess.ID},
 		}

@@ -75,17 +75,18 @@ type ChatMessage struct {
 // ─── Session ──────────────────────────────────────────────────────────────────
 
 type Session struct {
-	ID             string       `json:"id"`
-	State          SessionState `json:"state"`
-	Messages       []ChatMessage `json:"messages"`
-	PatientInfo    PatientInfo  `json:"patientInfo"`
-	MatchedDoctor  *Doctor      `json:"matchedDoctor"`
-	SelectedSlot   *TimeSlot    `json:"selectedSlot"`
-	Appointment    *Appointment `json:"appointment"`
-	PhoneNumber    string       `json:"phoneNumber"` // for inbound call lookup
-	ChatSummary    string       `json:"chatSummary"` // 2-sentence summary for voice handoff
-	CreatedAt      time.Time    `json:"createdAt"`
-	LastActivityAt time.Time    `json:"lastActivityAt"`
+	ID                string        `json:"id"`
+	State             SessionState  `json:"state"`
+	Messages          []ChatMessage `json:"messages"`
+	PatientInfo       PatientInfo   `json:"patientInfo"`
+	MatchedDoctor     *Doctor       `json:"matchedDoctor"`
+	SelectedSlot      *TimeSlot     `json:"selectedSlot"`
+	Appointment       *Appointment  `json:"appointment"`
+	PhoneNumber       string        `json:"phoneNumber"` // for inbound call lookup
+	ChatSummary       string        `json:"chatSummary"` // 2-sentence summary for voice handoff
+	LastCallDroppedAt time.Time     `json:"lastCallDroppedAt"`
+	CreatedAt         time.Time     `json:"createdAt"`
+	LastActivityAt    time.Time     `json:"lastActivityAt"`
 }
 
 // ─── API Request / Response ───────────────────────────────────────────────────
