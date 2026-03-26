@@ -57,7 +57,7 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
-              Your name
+              Your name (any username)
             </label>
             <input
               type="text"
@@ -76,7 +76,7 @@ export default function LoginPage() {
 
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
-              Access password
+              Access password (It is - 1234)
             </label>
             <input
               type="password"
