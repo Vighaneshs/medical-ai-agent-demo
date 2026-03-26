@@ -234,7 +234,7 @@ func TestExecuteToolCalls_BeginIntake(t *testing.T) {
 	sess.State = models.StateGreeting
 
 	calls := []services.ToolCallResult{{ToolName: "begin_intake", Input: map[string]interface{}{}}}
-	newState := h.executeToolCalls(sess, calls, nil)
+	newState, _ := h.executeToolCalls(sess, calls, nil)
 
 	if newState != models.StateIntake {
 		t.Errorf("begin_intake: state = %q, want INTAKE", newState)
@@ -245,7 +245,7 @@ func TestExecuteToolCalls_BeginPrescription(t *testing.T) {
 	h := setupHandlerTest(t, &mockAI{})
 	sess := services.Store.GetOrCreate("begin-presc-test")
 	calls := []services.ToolCallResult{{ToolName: "begin_prescription", Input: map[string]interface{}{}}}
-	newState := h.executeToolCalls(sess, calls, nil)
+	newState, _ := h.executeToolCalls(sess, calls, nil)
 	if newState != models.StatePrescription {
 		t.Errorf("begin_prescription: state = %q, want PRESCRIPTION", newState)
 	}
@@ -255,7 +255,7 @@ func TestExecuteToolCalls_ShowOfficeInfo(t *testing.T) {
 	h := setupHandlerTest(t, &mockAI{})
 	sess := services.Store.GetOrCreate("office-info-test")
 	calls := []services.ToolCallResult{{ToolName: "show_office_info", Input: map[string]interface{}{}}}
-	newState := h.executeToolCalls(sess, calls, nil)
+	newState, _ := h.executeToolCalls(sess, calls, nil)
 	if newState != models.StateHours {
 		t.Errorf("show_office_info: state = %q, want HOURS", newState)
 	}
@@ -277,7 +277,7 @@ func TestExecuteToolCalls_CollectIntake(t *testing.T) {
 			"reasonForVisit": "migraines",
 		},
 	}}
-	newState := h.executeToolCalls(sess, calls, nil)
+	newState, _ := h.executeToolCalls(sess, calls, nil)
 
 	if newState != models.StateMatching {
 		t.Errorf("collect_intake: state = %q, want MATCHING", newState)
@@ -302,7 +302,7 @@ func TestExecuteToolCalls_ConfirmDoctor(t *testing.T) {
 		ToolName: "confirm_doctor",
 		Input:    map[string]interface{}{"doctorId": "dr-thompson"},
 	}}
-	newState := h.executeToolCalls(sess, calls, nil)
+	newState, _ := h.executeToolCalls(sess, calls, nil)
 
 	if newState != models.StateScheduling {
 		t.Errorf("confirm_doctor: state = %q, want SCHEDULING", newState)
@@ -321,11 +321,16 @@ func TestExecuteToolCalls_ConfirmDoctor_InvalidID(t *testing.T) {
 		ToolName: "confirm_doctor",
 		Input:    map[string]interface{}{"doctorId": "dr-nobody"},
 	}}
-	newState := h.executeToolCalls(sess, calls, nil)
+	newState, errs := h.executeToolCalls(sess, calls, nil)
 
-	// State should not change for invalid doctor
 	if newState != models.StateMatching {
 		t.Errorf("invalid doctor: state = %q, want MATCHING unchanged", newState)
+	}
+	if len(errs) == 0 {
+		t.Error("expected a tool error for invalid doctorId, got none")
+	}
+	if len(errs) > 0 && !strings.Contains(errs[0], "dr-nobody") {
+		t.Errorf("error message should mention the bad doctor ID, got: %q", errs[0])
 	}
 }
 
@@ -355,7 +360,7 @@ func TestExecuteToolCalls_SelectSlot(t *testing.T) {
 			"startTime": available.StartTime,
 		},
 	}}
-	newState := h.executeToolCalls(sess, calls, nil)
+	newState, _ := h.executeToolCalls(sess, calls, nil)
 
 	if newState != models.StateConfirming {
 		t.Errorf("select_slot: state = %q, want CONFIRMING", newState)
@@ -365,6 +370,48 @@ func TestExecuteToolCalls_SelectSlot(t *testing.T) {
 	}
 	if sess.SelectedSlot.Date != available.Date {
 		t.Errorf("SelectedSlot.Date = %q, want %q", sess.SelectedSlot.Date, available.Date)
+	}
+}
+
+// TestExecuteToolCalls_SelectSlot_AlreadyBooked verifies that select_slot for a
+// pre-booked slot returns a tool error and leaves state unchanged.
+func TestExecuteToolCalls_SelectSlot_AlreadyBooked(t *testing.T) {
+	h := setupHandlerTest(t, &mockAI{})
+	sess := services.Store.GetOrCreate("select-slot-booked")
+	sess.State = models.StateScheduling
+	sess.MatchedDoctor = services.GetDoctorByID("dr-mitchell")
+
+	// Find an available slot and pre-book it
+	slots := services.GenerateAvailability("dr-mitchell")
+	var target *models.TimeSlot
+	for i := range slots {
+		if slots[i].Available {
+			target = &slots[i]
+			break
+		}
+	}
+	if target == nil {
+		t.Skip("no available slots for dr-mitchell")
+	}
+	services.BookSlot("dr-mitchell", target.Date, target.StartTime)
+
+	calls := []services.ToolCallResult{{
+		ToolName: "select_slot",
+		Input: map[string]interface{}{
+			"date":      target.Date,
+			"startTime": target.StartTime,
+		},
+	}}
+	newState, errs := h.executeToolCalls(sess, calls, nil)
+
+	if newState != models.StateScheduling {
+		t.Errorf("already-booked slot: state = %q, want SCHEDULING unchanged", newState)
+	}
+	if len(errs) == 0 {
+		t.Error("expected a tool error for already-booked slot, got none")
+	}
+	if len(errs) > 0 && !strings.Contains(errs[0], "already booked") {
+		t.Errorf("error should mention 'already booked', got: %q", errs[0])
 	}
 }
 
@@ -390,7 +437,7 @@ func TestExecuteToolCalls_ConfirmBooking(t *testing.T) {
 		ToolName: "confirm_booking",
 		Input:    map[string]interface{}{"smsOptIn": false},
 	}}
-	newState := h.executeToolCalls(sess, calls, nil)
+	newState, _ := h.executeToolCalls(sess, calls, nil)
 
 	if newState != models.StateBooked {
 		t.Errorf("confirm_booking: state = %q, want BOOKED", newState)
@@ -414,7 +461,7 @@ func TestExecuteToolCalls_LogPrescriptionRequest(t *testing.T) {
 			"pharmacyName": "CVS Pharmacy",
 		},
 	}}
-	newState := h.executeToolCalls(sess, calls, nil)
+	newState, _ := h.executeToolCalls(sess, calls, nil)
 	if newState != models.StatePrescription {
 		t.Errorf("log_prescription_request: state = %q, want PRESCRIPTION", newState)
 	}
@@ -425,7 +472,7 @@ func TestExecuteToolCalls_EmptyCalls(t *testing.T) {
 	sess := services.Store.GetOrCreate("empty-calls-test")
 	sess.State = models.StateGreeting
 
-	newState := h.executeToolCalls(sess, nil, nil)
+	newState, _ := h.executeToolCalls(sess, nil, nil)
 	if newState != models.StateGreeting {
 		t.Errorf("empty calls: state = %q, want GREETING (unchanged)", newState)
 	}
@@ -522,7 +569,7 @@ func TestExecuteToolCalls_StateGuards(t *testing.T) {
 				},
 			}}
 
-			newState := h.executeToolCalls(sess, calls, nil)
+			newState, _ := h.executeToolCalls(sess, calls, nil)
 
 			if newState != tc.wantState {
 				t.Errorf("state after blocked tool call = %q, want %q", newState, tc.wantState)
@@ -559,13 +606,16 @@ func TestExecuteToolCalls_ConfirmBooking_NilGuards(t *testing.T) {
 			ToolName: "confirm_booking",
 			Input:    map[string]interface{}{"smsOptIn": false},
 		}}
-		newState := h.executeToolCalls(sess, calls, nil)
+		newState, errs := h.executeToolCalls(sess, calls, nil)
 
 		if newState != models.StateConfirming {
 			t.Errorf("nil MatchedDoctor: state = %q, want CONFIRMING", newState)
 		}
 		if sess.Appointment != nil {
 			t.Error("nil MatchedDoctor: Appointment should not be created")
+		}
+		if len(errs) == 0 {
+			t.Error("expected a tool error for nil MatchedDoctor, got none")
 		}
 	})
 
@@ -580,13 +630,16 @@ func TestExecuteToolCalls_ConfirmBooking_NilGuards(t *testing.T) {
 			ToolName: "confirm_booking",
 			Input:    map[string]interface{}{"smsOptIn": false},
 		}}
-		newState := h.executeToolCalls(sess, calls, nil)
+		newState, errs := h.executeToolCalls(sess, calls, nil)
 
 		if newState != models.StateConfirming {
 			t.Errorf("nil SelectedSlot: state = %q, want CONFIRMING", newState)
 		}
 		if sess.Appointment != nil {
 			t.Error("nil SelectedSlot: Appointment should not be created")
+		}
+		if len(errs) == 0 {
+			t.Error("expected a tool error for nil SelectedSlot, got none")
 		}
 	})
 
@@ -612,7 +665,7 @@ func TestExecuteToolCalls_ConfirmBooking_NilGuards(t *testing.T) {
 			ToolName: "confirm_booking",
 			Input:    map[string]interface{}{"smsOptIn": true},
 		}}
-		newState := h.executeToolCalls(sess, calls, nil)
+		newState, _ := h.executeToolCalls(sess, calls, nil)
 
 		if newState != models.StateBooked {
 			t.Errorf("both set: state = %q, want BOOKED", newState)
@@ -659,7 +712,7 @@ func TestExecuteToolCalls_BeginIntake_ValidStates(t *testing.T) {
 			sess := services.Store.GetOrCreate("begin-intake-allowed-" + string(state))
 			sess.State = state
 
-			newState := h.executeToolCalls(sess, calls, nil)
+			newState, _ := h.executeToolCalls(sess, calls, nil)
 			if newState != models.StateIntake {
 				t.Errorf("begin_intake from %s: state = %q, want INTAKE", state, newState)
 			}
@@ -675,7 +728,7 @@ func TestExecuteToolCalls_BeginIntake_ValidStates(t *testing.T) {
 				sess.MatchedDoctor = services.GetDoctorByID("dr-mitchell")
 			}
 
-			newState := h.executeToolCalls(sess, calls, nil)
+			newState, _ := h.executeToolCalls(sess, calls, nil)
 			if newState != state {
 				t.Errorf("begin_intake from %s (blocked): state = %q, want unchanged %s",
 					state, newState, state)
@@ -737,7 +790,7 @@ func TestExecuteToolCalls_MultipleTools_LastWins(t *testing.T) {
 		},
 	}
 
-	newState := h.executeToolCalls(sess, calls, nil)
+	newState, _ := h.executeToolCalls(sess, calls, nil)
 
 	if newState != models.StateConfirming {
 		t.Errorf("final state = %q, want CONFIRMING (collect_intake should be blocked after select_slot)", newState)

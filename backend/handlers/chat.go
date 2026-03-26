@@ -87,14 +87,22 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[chat] session=%s   tool=%s input=%v", sess.ID, c.ToolName, c.Input)
 	}
 
-	newState := h.executeToolCalls(sess, calls, r)
-	log.Printf("[chat] session=%s new_state=%s", sess.ID, newState)
+	newState, toolErrs := h.executeToolCalls(sess, calls, r)
+	log.Printf("[chat] session=%s new_state=%s tool_errors=%d", sess.ID, newState, len(toolErrs))
+	// Inject tool errors into session history so the AI sees what failed
+	// and can apologise + offer corrected options on the next turn.
+	for _, e := range toolErrs {
+		h.sessions.AppendMessage(sess, "user", e)
+	}
 
-	// Continue in two cases:
+	// Continue in three cases:
 	// 1. Tool-only turn (no text) — Gemini/Haiku sometimes calls tools silently.
 	// 2. State just moved to MATCHING — the AI said "finding a doctor" but didn't
 	//    call confirm_doctor yet; we need another turn to do the doctor matching.
-	needsContinuation := (strings.TrimSpace(assistantText) == "" && len(calls) > 0) || newState == models.StateMatching || newState == models.StateBooked
+	// 3. A tool call returned an error — the AI must respond to the failure.
+	needsContinuation := (strings.TrimSpace(assistantText) == "" && len(calls) > 0) ||
+		newState == models.StateMatching || newState == models.StateBooked ||
+		len(toolErrs) > 0
 	for attempt := 1; attempt <= 3 && needsContinuation; attempt++ {
 		if ctx.Err() != nil {
 			return
@@ -127,15 +135,20 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 		calls = <-tr
+		var contErrs []string
 		if len(calls) > 0 {
 			log.Printf("[chat] session=%s continuation attempt=%d produced %d tool calls", sess.ID, attempt, len(calls))
-			newState = h.executeToolCalls(sess, calls, r)
+			newState, contErrs = h.executeToolCalls(sess, calls, r)
+			for _, e := range contErrs {
+				h.sessions.AppendMessage(sess, "user", e)
+			}
 		}
-		log.Printf("[chat] session=%s continuation attempt=%d done: text_len=%d new_state=%s", sess.ID, attempt, len(assistantText), newState)
-		// Continue if: (a) silent tool-only turn, or (b) transitioned into a state that
-		// requires a follow-up text response but produced no meaningful text yet.
+		log.Printf("[chat] session=%s continuation attempt=%d done: text_len=%d new_state=%s tool_errors=%d",
+			sess.ID, attempt, len(assistantText), newState, len(contErrs))
+		// Continue if: (a) silent tool-only turn, (b) state requires follow-up, or (c) new tool errors.
 		needsFollowUp := newState == models.StateMatching || newState == models.StateScheduling || newState == models.StateBooked
-		needsContinuation = strings.TrimSpace(assistantText) == "" && (len(calls) > 0 || needsFollowUp)
+		needsContinuation = (strings.TrimSpace(assistantText) == "" && (len(calls) > 0 || needsFollowUp)) ||
+			len(contErrs) > 0
 	}
 
 	// Fallback: if the booking was confirmed but the AI produced no text (e.g. silent
@@ -172,7 +185,14 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 }
 
-func (h *ChatHandler) executeToolCalls(sess *models.Session, calls []services.ToolCallResult, r *http.Request) models.SessionState {
+// executeToolCalls processes each tool call in sequence, updating session state.
+// It returns the final state and a slice of error strings for any tool calls
+// that failed with recoverable data errors (invalid doctor, booked slot, etc.).
+// Errors are injected back into the session history by the caller so the AI
+// can apologise and offer the patient corrected options.
+func (h *ChatHandler) executeToolCalls(sess *models.Session, calls []services.ToolCallResult, r *http.Request) (models.SessionState, []string) {
+	var errs []string
+
 	for _, call := range calls {
 		switch call.ToolName {
 		case "begin_intake":
@@ -217,6 +237,11 @@ func (h *ChatHandler) executeToolCalls(sess *models.Session, calls []services.To
 			} else {
 				log.Printf("[chat] session=%s WARN confirm_doctor: unknown doctorId=%q — state stays %s (valid IDs: %v)",
 					sess.ID, doctorID, sess.State, services.DoctorIDs())
+				errs = append(errs, fmt.Sprintf(
+					"[TOOL RESULT — ERROR] confirm_doctor: doctor ID %q does not exist. "+
+						"You must use one of the valid IDs: %v. "+
+						"Please re-select the correct doctor and call confirm_doctor again.",
+					doctorID, services.DoctorIDs()))
 			}
 
 		case "select_slot":
@@ -230,6 +255,10 @@ func (h *ChatHandler) executeToolCalls(sess *models.Session, calls []services.To
 				if services.IsSlotBooked(sess.MatchedDoctor.ID, date, startTime) {
 					log.Printf("[chat] session=%s WARN select_slot: slot already booked doctor=%s date=%s time=%s",
 						sess.ID, sess.MatchedDoctor.ID, date, startTime)
+					errs = append(errs, fmt.Sprintf(
+						"[TOOL RESULT — ERROR] select_slot: the slot on %s at %s with %s is already booked by another patient. "+
+							"Please apologise to the patient and ask them to choose a different available time.",
+						date, startTime, sess.MatchedDoctor.Name))
 					break
 				}
 				slots := services.GenerateAvailability(sess.MatchedDoctor.ID)
@@ -245,6 +274,10 @@ func (h *ChatHandler) executeToolCalls(sess *models.Session, calls []services.To
 				if !slotAvailable {
 					log.Printf("[chat] session=%s WARN select_slot: slot not available doctor=%s date=%s time=%s",
 						sess.ID, sess.MatchedDoctor.ID, date, startTime)
+					errs = append(errs, fmt.Sprintf(
+						"[TOOL RESULT — ERROR] select_slot: the slot on %s at %s is not in the available list for %s. "+
+							"Please only offer times from the provided availability and ask the patient to choose again.",
+						date, startTime, sess.MatchedDoctor.Name))
 					break
 				}
 				sess.SelectedSlot = &models.TimeSlot{
@@ -267,6 +300,8 @@ func (h *ChatHandler) executeToolCalls(sess *models.Session, calls []services.To
 			if sess.SelectedSlot == nil || sess.MatchedDoctor == nil {
 				log.Printf("[chat] session=%s WARN confirm_booking: nil pointer — doctor=%v slot=%v — cannot book",
 					sess.ID, sess.MatchedDoctor, sess.SelectedSlot)
+				errs = append(errs, "[TOOL RESULT — ERROR] confirm_booking: appointment data is incomplete — "+
+					"either the doctor or the time slot is missing. Please restart the scheduling flow with the patient.")
 				break
 			}
 			smsOptIn := boolField(call.Input, "smsOptIn")
@@ -297,7 +332,7 @@ func (h *ChatHandler) executeToolCalls(sess *models.Session, calls []services.To
 			sess.State = models.StatePrescription
 		}
 	}
-	return sess.State
+	return sess.State, errs
 }
 
 func truncateStr(s string, n int) string {

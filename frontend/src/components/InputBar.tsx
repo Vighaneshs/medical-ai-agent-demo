@@ -38,11 +38,11 @@ export function InputBar({ onSend, disabled }: Props) {
 
   return (
     <div
-      className="px-6 py-4 border-t z-10"
-      style={{ borderColor: 'var(--glass-border)', background: 'rgba(10, 20, 40, 0.5)', backdropFilter: 'blur(20px)' }}
+      className="px-2 sm:px-6 py-3 sm:py-4 border-t z-10"
+      style={{ borderColor: 'var(--glass-border)', background: 'var(--glass-bg)', backdropFilter: 'blur(20px)' }}
     >
       <div
-        className="glass flex items-end gap-3 px-4 py-3 shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-all"
+        className="glass flex items-end gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 shadow-[0_4px_20px_rgba(0,0,0,0.3)] transition-all"
         style={{ border: '1px solid var(--glass-border)' }}
       >
         <textarea

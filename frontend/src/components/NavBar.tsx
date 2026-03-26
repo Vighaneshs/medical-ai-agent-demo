@@ -31,10 +31,10 @@ export function NavBar() {
 
   return (
     <nav
-      className="w-full flex items-center px-6 gap-6 border-b"
+      className="w-full flex items-center px-4 sm:px-6 gap-2 sm:gap-6 border-b"
       style={{
           height: 'var(--nav-height)',
-          background: 'rgba(8, 12, 22, 0.65)',
+          background: 'rgba(2, 8, 23, 0.65)',
           backdropFilter: 'blur(24px) saturate(1.8)',
           WebkitBackdropFilter: 'blur(24px) saturate(1.8)',
           borderColor: 'var(--glass-border)',
@@ -45,38 +45,39 @@ export function NavBar() {
         }}
       >
         {/* Brand */}
-        <Link href="/" className="flex items-center gap-2 mr-4 flex-shrink-0 group">
+        <Link href="/" className="flex items-center gap-2 mr-2 sm:mr-4 flex-shrink-0 group">
           <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shadow-[0_0_15px_rgba(0,210,255,0.3)] transition-transform group-hover:scale-105"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shadow-[0_0_15px_rgba(87,125,232,0.3)] transition-transform group-hover:scale-105"
             style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))', color: '#fff' }}
         >
           K
         </div>
-        <span className="font-semibold text-sm">Kyron Medical</span>
+        <span className="font-semibold text-sm hidden xs:inline-block sm:inline-block">Kyron Medical</span>
       </Link>
 
-      {/* Nav links — hidden on login page */}
-      {!isLoginPage && links.map(({ href, label }) => {
-        const isActive = pathname === href;
-        return (
-            <Link
-              key={href}
-              href={href}
-              className="text-sm font-medium transition-all hover:text-white"
-              style={{
-                color: isActive ? 'var(--text)' : 'var(--text-muted)',
-                borderBottom: isActive ? '2px solid var(--primary)' : '2px solid transparent',
-                textShadow: isActive ? '0 0 10px rgba(0,210,255,0.3)' : 'none',
-                paddingBottom: '2px',
-              }}
-            >
-            {label}
-          </Link>
-        );
-      })}
-
-      {/* Spacer */}
-      <div className="flex-1" />
+      {/* Nav links */}
+      {!isLoginPage && (
+        <div className="flex flex-1 items-center gap-3 sm:gap-6 overflow-x-auto no-scrollbar ml-2 sm:ml-0">
+          {links.map(({ href, label }) => {
+            const isActive = pathname === href;
+            return (
+                <Link
+                  key={href}
+                  href={href}
+                  className="text-xs sm:text-sm font-medium transition-all hover:text-white whitespace-nowrap"
+                  style={{
+                    color: isActive ? 'var(--text)' : 'var(--text-muted)',
+                    borderBottom: isActive ? '2px solid var(--primary)' : '2px solid transparent',
+                    textShadow: isActive ? '0 0 10px rgba(87,125,232,0.3)' : 'none',
+                    paddingBottom: '2px',
+                  }}
+                >
+                {label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
       {/* User identity */}
       {!isLoginPage && username && (

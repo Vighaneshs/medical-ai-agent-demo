@@ -124,14 +124,14 @@ export function VoiceCallButton({ sessionId }: Props) {
 
   return (
     <div className="flex flex-col items-end gap-2">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {/* In-browser call */}
         <motion.button
           whileTap={{ scale: 0.93 }}
           onClick={startBrowserCall}
           disabled={browserState === 'connecting'}
           title="Call in browser"
-          className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium transition-opacity"
+          className="flex items-center justify-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium transition-opacity"
           style={{
             background: browserState === 'connecting' ? 'rgba(87,125,232,0.3)' : 'var(--primary)',
             color: '#fff',
@@ -151,7 +151,7 @@ export function VoiceCallButton({ sessionId }: Props) {
               <path d="M12 15c1.66 0 3-1.34 3-3V6c0-1.66-1.34-3-3-3S9 4.34 9 6v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V6zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-2.08c3.39-.49 6-3.39 6-6.92h-2z"/>
             </svg>
           )}
-          {browserState === 'connecting' ? 'Connecting…' : 'Call in browser'}
+          <span className="hidden sm:inline">{browserState === 'connecting' ? 'Connecting…' : 'Call in browser'}</span>
         </motion.button>
 
         {/* Call my phone */}
@@ -159,7 +159,7 @@ export function VoiceCallButton({ sessionId }: Props) {
           whileTap={{ scale: 0.93 }}
           onClick={() => { setShowPhoneInput(v => !v); setError(null); }}
           title="Call my phone"
-          className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium"
+          className="flex items-center justify-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium"
           style={{
             background: showPhoneInput ? 'rgba(87,125,232,0.2)' : 'rgba(87,125,232,0.08)',
             color: '#7BA4EF',
@@ -170,7 +170,7 @@ export function VoiceCallButton({ sessionId }: Props) {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
             <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
           </svg>
-          Call my phone
+          <span className="hidden sm:inline">Call my phone</span>
         </motion.button>
       </div>
 

@@ -223,12 +223,12 @@ export function ChatInterface() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div
-        className="flex items-center justify-between px-6 py-4 border-b backdrop-blur-3xl z-10"
-        style={{ borderColor: 'var(--glass-border)', background: 'rgba(10, 20, 40, 0.5)' }}
+        className="flex flex-wrap items-center justify-between gap-y-3 px-3 sm:px-6 py-3 sm:py-4 border-b backdrop-blur-3xl z-10"
+        style={{ borderColor: 'var(--glass-border)', background: 'var(--glass-bg)' }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shadow-[0_0_15px_rgba(0,210,255,0.3)]"
+            className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-sm font-bold shadow-[0_0_15px_rgba(87,125,232,0.3)] hidden xs:flex"
             style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))' }}
           >
             K
@@ -238,14 +238,14 @@ export function ChatInterface() {
             <div className="text-xs" style={{ color: 'var(--text-muted)' }}>AI Care Coordinator</div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
           <StatusBadge state={sessionState} />
           <VoiceCallButton sessionId={sessionId.current} sessionState={sessionState} />
         </div>
       </div>
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+      <div className="flex-1 overflow-y-auto px-2 sm:px-4 py-4 sm:py-6 space-y-4">
         <AnimatePresence initial={false}>
           {messages.filter(msg => msg.content.trim()).map(msg => (
             <MessageBubble key={msg.id} message={msg} />
@@ -354,21 +354,21 @@ export function ChatInterface() {
                 <button
                   key={label}
                   onClick={() => handleSend(message)}
-                  className="px-4 py-2 rounded-full text-sm font-medium border transition-all"
+                  className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm font-medium border transition-all"
                   style={{
-                    background: 'rgba(0, 210, 255, 0.1)',
-                    borderColor: 'rgba(0, 210, 255, 0.3)',
+                    background: 'rgba(87, 125, 232, 0.1)',
+                    borderColor: 'rgba(87, 125, 232, 0.3)',
                     color: 'var(--text)',
                     boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
                   }}
                   onMouseEnter={e => {
-                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0, 210, 255, 0.2)';
-                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0, 210, 255, 0.6)';
-                    (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 15px rgba(0, 210, 255, 0.3)';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(87, 125, 232, 0.2)';
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(87, 125, 232, 0.6)';
+                    (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 15px rgba(87, 125, 232, 0.3)';
                   }}
                   onMouseLeave={e => {
-                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0, 210, 255, 0.1)';
-                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0, 210, 255, 0.3)';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(87, 125, 232, 0.1)';
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(87, 125, 232, 0.3)';
                     (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 15px rgba(0,0,0,0.2)';
                   }}
                 >
