@@ -50,7 +50,7 @@ export function ChatInterface() {
   }, []);
 
   // Sync local UI state from backend session — called after a voice call ends
-  // so any bookings/state changes made during the call are reflected in chat.
+  // or periodically to reflect live updates (transcripts, state changes, etc.) made over the phone.
   const syncSession = useCallback(async () => {
     try {
       const snap = await getSession(sessionId.current);
@@ -59,7 +59,8 @@ export function ChatInterface() {
       setSessionState(prev => {
         if (prev === newState) return prev;
 
-        // If a booking happened during the voice call, add a notification bubble
+        // If a booking happened remotely (e.g. via voice call), add a notification bubble
+        // since the backend doesn't save the live voice transcript to the main message array.
         if (newState === 'BOOKED' && prev !== 'BOOKED' && snap.appointmentId) {
           const short = snap.appointmentId.slice(0, 8);
           const name = snap.patientFirstName ? `, ${snap.patientFirstName}` : '';
@@ -70,12 +71,21 @@ export function ChatInterface() {
             createdAt: new Date().toISOString(),
           }]);
         }
-
         return newState;
       });
 
       setMatchedDoctorId(snap.doctorId || null);
       setSelectedSlot(snap.selectedSlot || null);
+      if (snap.patientFirstName) setPatientFirstName(snap.patientFirstName);
+
+      // Sync messages if the backend has more (e.g. from parallel web chat or chat recovery)
+      setMessages(prev => {
+        if (!snap.messages) return prev;
+        if (snap.messages.length > prev.length) {
+          return snap.messages;
+        }
+        return prev;
+      });
     } catch {
       // Session not found or network error — silently ignore
     }
@@ -88,6 +98,16 @@ export function ChatInterface() {
     document.addEventListener('visibilitychange', onFocus);
     return () => document.removeEventListener('visibilitychange', onFocus);
   }, [syncSession]);
+
+  // Poll for updates to reflect voice call changes in real-time
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!isStreaming) {
+        syncSession();
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [syncSession, isStreaming]);
 
   useEffect(() => { scrollToBottom(); }, [messages, streamingText, scrollToBottom]);
 
