@@ -15,10 +15,25 @@ import (
 
 // ─── vapiLLMConfig ────────────────────────────────────────────────────────────
 
-func TestVapiLLMConfig_DefaultsToAnthropic(t *testing.T) {
-	t.Setenv("AI_PROVIDER", "")
+func TestVapiLLMConfig_DefaultsToOpenAI(t *testing.T) {
 	t.Setenv("VAPI_PROVIDER", "")
 	t.Setenv("VAPI_MODEL", "")
+	cfg := vapiLLMConfig("test prompt", nil)
+
+	if cfg["provider"] != "openai" {
+		t.Errorf("provider = %q, want openai", cfg["provider"])
+	}
+	if cfg["model"] != "gpt-5.2" {
+		t.Errorf("model = %q, want gpt-5.2", cfg["model"])
+	}
+	if _, ok := cfg["messages"]; !ok {
+		t.Error("messages must be present")
+	}
+}
+
+func TestVapiLLMConfig_ExplicitEnvVars(t *testing.T) {
+	t.Setenv("VAPI_PROVIDER", "anthropic")
+	t.Setenv("VAPI_MODEL", "claude-3-5-sonnet-20241022")
 	cfg := vapiLLMConfig("test prompt", nil)
 
 	if cfg["provider"] != "anthropic" {
@@ -26,36 +41,6 @@ func TestVapiLLMConfig_DefaultsToAnthropic(t *testing.T) {
 	}
 	if cfg["model"] != "claude-3-5-sonnet-20241022" {
 		t.Errorf("model = %q, want claude-3-5-sonnet-20241022", cfg["model"])
-	}
-	if _, ok := cfg["messages"]; !ok {
-		t.Error("messages must be present")
-	}
-}
-
-func TestVapiLLMConfig_GeminiProvider(t *testing.T) {
-	t.Setenv("AI_PROVIDER", "gemini")
-	t.Setenv("VAPI_PROVIDER", "")
-	t.Setenv("VAPI_MODEL", "")
-	cfg := vapiLLMConfig("test prompt", nil)
-
-	if cfg["provider"] != "google" {
-		t.Errorf("provider = %q, want google", cfg["provider"])
-	}
-	if cfg["model"] != "gemini-1.5-flash" {
-		t.Errorf("model = %q, want gemini-1.5-flash", cfg["model"])
-	}
-}
-
-func TestVapiLLMConfig_ExplicitEnvVars(t *testing.T) {
-	t.Setenv("VAPI_PROVIDER", "anthropic")
-	t.Setenv("VAPI_MODEL", "claude-3-opus-20240229")
-	cfg := vapiLLMConfig("test prompt", nil)
-
-	if cfg["provider"] != "anthropic" {
-		t.Errorf("provider = %q, want anthropic", cfg["provider"])
-	}
-	if cfg["model"] != "claude-3-opus-20240229" {
-		t.Errorf("model = %q, want claude-3-opus-20240229", cfg["model"])
 	}
 }
 
