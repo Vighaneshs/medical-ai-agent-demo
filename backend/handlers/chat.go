@@ -340,6 +340,17 @@ func executeToolCalls(sess *models.Session, calls []services.ToolCallResult) (mo
 			}
 			date := normalizeDate(strField(call.Input, "date"))
 			startTime := normalizeTime(strField(call.Input, "startTime"))
+			if date == "" || startTime == "" {
+				log.Printf("[chat] session=%s WARN select_slot: missing date=%q or startTime=%q", sess.ID, date, startTime)
+				errs = append(errs, "[TOOL RESULT — ERROR] select_slot: date or startTime is missing. "+
+					"Provide date in YYYY-MM-DD format (e.g. \"2026-04-01\") and startTime in HH:MM 24-hour format (e.g. \"09:00\").")
+				break
+			}
+			if sess.MatchedDoctor == nil {
+				log.Printf("[chat] session=%s WARN select_slot: no matched doctor", sess.ID)
+				errs = append(errs, "[TOOL RESULT — ERROR] select_slot: no doctor has been confirmed yet. Call confirm_doctor first.")
+				break
+			}
 			if date != "" && startTime != "" && sess.MatchedDoctor != nil {
 				if services.IsSlotBooked(sess.MatchedDoctor.ID, date, startTime) {
 					log.Printf("[chat] session=%s WARN select_slot: slot already booked doctor=%s date=%s time=%s",
@@ -384,6 +395,14 @@ func executeToolCalls(sess *models.Session, calls []services.ToolCallResult) (mo
 				sess.ID, sess.State, sess.MatchedDoctor != nil, sess.SelectedSlot != nil)
 			if sess.State != models.StateConfirming {
 				log.Printf("[chat] session=%s WARN confirm_booking: ignored in state=%s (expected CONFIRMING)", sess.ID, sess.State)
+				if sess.State == models.StateScheduling {
+					errs = append(errs, "[TOOL RESULT — ERROR] confirm_booking: no time slot has been selected yet. "+
+						"You MUST call select_slot with the patient's chosen date (YYYY-MM-DD) and startTime (HH:MM) before calling confirm_booking.")
+				} else {
+					errs = append(errs, fmt.Sprintf(
+						"[TOOL RESULT — ERROR] confirm_booking: cannot book — current state is %s. Complete the scheduling flow (select_slot) first.",
+						sess.State))
+				}
 				break
 			}
 			if sess.SelectedSlot == nil || sess.MatchedDoctor == nil {

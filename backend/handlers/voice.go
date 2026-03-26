@@ -21,12 +21,32 @@ import (
 // voiceToolResult returns a natural-language spoken sentence that Vapi feeds
 // back to the LLM as the tool's return value.
 func voiceToolResult(sess *models.Session, toolName string, errs []string) string {
-	if len(errs) > 0 {
-		// For select_slot errors in voice context, guide the agent to ask for a
-		// different preference rather than reciting the full availability list.
-		if toolName == "select_slot" {
-			return "That time slot is not available. Ask the patient if they have another day or time preference, then find the nearest available slot and call select_slot again."
+	// select_slot and confirm_booking use session state as the authoritative
+	// success indicator — not the shared errs slice, which may contain errors
+	// from other tools in the same batch.
+	switch toolName {
+	case "select_slot":
+		if sess.SelectedSlot != nil {
+			return fmt.Sprintf("Slot saved: %s at %s. NEXT: read back the full booking summary — doctor name, date, and time. Ask: \"Shall I confirm this appointment? And would you like SMS reminders?\" When patient says yes, you MUST immediately call confirm_booking with smsOptIn=true or false. Do NOT say the appointment is confirmed until confirm_booking succeeds.", sess.SelectedSlot.Date, sess.SelectedSlot.StartTime)
 		}
+		// Slot was not saved — surface the specific error if we have one, otherwise
+		// give the agent actionable guidance on format requirements.
+		if len(errs) > 0 {
+			return errs[0]
+		}
+		return "ERROR: Could not save the time slot — the date or time may be missing or in the wrong format. " +
+			"Re-confirm the exact date (use YYYY-MM-DD format, e.g. \"2026-04-01\") and time (use HH:MM 24-hour format, e.g. \"09:00\") with the patient, then call select_slot again."
+	case "confirm_booking":
+		if sess.Appointment != nil {
+			return fmt.Sprintf("SUCCESS. Appointment confirmed. Confirmation number: %s. Tell the patient: \"Your appointment is confirmed. Your confirmation number is %s and a confirmation email has been sent to %s.\" Ask if there is anything else you can help with.", sess.Appointment.ID[:8], sess.Appointment.ID[:8], sess.Appointment.Patient.Email)
+		}
+		if len(errs) > 0 {
+			return errs[0]
+		}
+		return "ERROR — booking failed. Tell the patient there was an issue saving the appointment and ask if they would like to try again. If yes, call confirm_booking again."
+	}
+
+	if len(errs) > 0 {
 		return errs[0]
 	}
 	switch toolName {
@@ -56,15 +76,6 @@ func voiceToolResult(sess *models.Session, toolName string, errs []string) strin
 		if sess.MatchedDoctor != nil {
 			return fmt.Sprintf("Doctor confirmed: %s (%s). NEXT: ask the patient what day of the week and approximate time of day works best for them (e.g. \"What day works best for you — earlier in the week or later? And do you prefer mornings or afternoons?\"). Do NOT read out the full list of slots. Once they express a preference, silently find the closest available slot from your system prompt that matches, then call select_slot with date (YYYY-MM-DD) and startTime (HH:MM).", sess.MatchedDoctor.Name, sess.MatchedDoctor.Specialty)
 		}
-	case "select_slot":
-		if sess.SelectedSlot != nil {
-			return fmt.Sprintf("Slot saved: %s at %s. NEXT: read back the full booking summary — doctor name, date, and time. Ask: \"Shall I confirm this appointment? And would you like SMS reminders?\" When patient says yes, you MUST immediately call confirm_booking with smsOptIn=true or false. Do NOT say the appointment is confirmed until confirm_booking succeeds.", sess.SelectedSlot.Date, sess.SelectedSlot.StartTime)
-		}
-	case "confirm_booking":
-		if sess.Appointment != nil {
-			return fmt.Sprintf("SUCCESS. Appointment confirmed. Confirmation number: %s. Tell the patient: \"Your appointment is confirmed. Your confirmation number is %s and a confirmation email has been sent to %s.\" Ask if there is anything else you can help with.", sess.Appointment.ID[:8], sess.Appointment.ID[:8], sess.Appointment.Patient.Email)
-		}
-		return "ERROR — booking failed. Tell the patient there was an issue saving the appointment and ask if they would like to try again. If yes, call confirm_booking again."
 	case "log_prescription_request":
 		return "Prescription request logged. Tell the patient their request has been received and the pharmacy will be contacted. Ask if there is anything else you can help with."
 	case "reject_doctor":
