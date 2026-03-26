@@ -33,16 +33,23 @@ func SendReminderEmail(appt *models.Appointment) {
 func ScheduleReminder(appt *models.Appointment) {
 	apptDate, err := time.Parse("2006-01-02", appt.Slot.Date)
 	if err != nil {
+		log.Printf("warn: ScheduleReminder: could not parse slot date %q for appt %s: %v", appt.Slot.Date, appt.ID[:8], err)
 		return
 	}
 
-	hour, _ := time.Parse("15:04", appt.Slot.StartTime)
+	hour, err := time.Parse("15:04", appt.Slot.StartTime)
+	if err != nil {
+		log.Printf("warn: ScheduleReminder: could not parse slot time %q for appt %s: %v", appt.Slot.StartTime, appt.ID[:8], err)
+		return
+	}
+
 	apptTime := time.Date(apptDate.Year(), apptDate.Month(), apptDate.Day(),
 		hour.Hour(), hour.Minute(), 0, 0, time.Local)
 
 	reminderTime := apptTime.Add(-24 * time.Hour)
 	delay := time.Until(reminderTime)
 	if delay <= 0 {
+		log.Printf("info: ScheduleReminder: appt %s is in the past or within 24h, skipping reminder", appt.ID[:8])
 		return
 	}
 
@@ -139,7 +146,7 @@ func buildConfirmationHTML(appt *models.Appointment) string {
 </html>`,
 		appt.Patient.FirstName,
 		appt.Doctor.Name, appt.Doctor.Specialty,
-		FormatDateReadable(appt.Slot.Date), appt.Slot.StartTime, appt.Slot.EndTime,
+		FormatDateReadable(appt.Slot.Date), FormatTimeReadable(appt.Slot.StartTime), FormatTimeReadable(appt.Slot.EndTime),
 		appt.ID[:8],
 		// Google Calendar date params (basic — removes dashes/colons)
 		removeChars(calDate, "-"), removeChars(calTime, ":")+":00",
@@ -173,7 +180,7 @@ func buildReminderHTML(appt *models.Appointment) string {
 		appt.Patient.FirstName,
 		appt.Doctor.Name,
 		FormatDateReadable(appt.Slot.Date),
-		appt.Slot.StartTime, appt.Slot.EndTime,
+		FormatTimeReadable(appt.Slot.StartTime), FormatTimeReadable(appt.Slot.EndTime),
 	)
 }
 

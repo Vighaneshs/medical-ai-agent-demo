@@ -420,10 +420,18 @@ func boolField(m map[string]interface{}, key string) bool {
 }
 
 // normalizeTime converts LLM-produced time strings to HH:MM (24-hour, zero-padded).
-// Handles: "9:00", "09:00", "9:00 AM", "2:00 PM", "14:00" etc.
+// Handles all common variants the LLM might output.
 func normalizeTime(s string) string {
 	s = strings.TrimSpace(s)
-	formats := []string{"15:04", "3:04 PM", "3:04 AM", "3:04PM", "3:04AM", "15:04:05"}
+	formats := []string{
+		"15:04", "15:04:05", // 24-hour
+		"3:04 PM", "3:04 AM", // 12-hour with space
+		"3:04PM", "3:04AM", // 12-hour without space
+		"03:04 PM", "03:04 AM", // zero-padded 12-hour with space
+		"03:04PM", "03:04AM", // zero-padded 12-hour without space
+		"3 PM", "3 AM", // hour-only, e.g. "9 AM" → "09:00"
+		"3:04:05 PM", "3:04:05 AM", // with seconds
+	}
 	for _, f := range formats {
 		if t, err := time.Parse(f, s); err == nil {
 			return t.Format("15:04")
@@ -433,11 +441,21 @@ func normalizeTime(s string) string {
 }
 
 // normalizeDate ensures dates are YYYY-MM-DD (zero-padded).
-// Handles: "2026-4-7", "2026-04-07" etc.
+// Handles ISO variants and natural-language forms the LLM may echo from prompts.
 func normalizeDate(s string) string {
 	s = strings.TrimSpace(s)
-	if t, err := time.Parse("2006-1-2", s); err == nil {
-		return t.Format("2006-01-02")
+	formats := []string{
+		"2006-1-2",                // ISO with/without padding
+		"January 2, 2006",         // "April 7, 2026"
+		"Jan 2, 2006",             // "Apr 7, 2026"
+		"Monday, January 2, 2006", // exact output of FormatDateReadable
+		"Monday, Jan 2, 2006",
+		"1/2/2006", // US short form
+	}
+	for _, f := range formats {
+		if t, err := time.Parse(f, s); err == nil {
+			return t.Format("2006-01-02")
+		}
 	}
 	return s
 }

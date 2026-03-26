@@ -16,7 +16,7 @@ func SendConfirmationSMS(appt *models.Appointment) {
 		"Kyron Medical: Appt confirmed! Dr. %s on %s at %s. Location: 1250 Healthcare Blvd, SF. Confirmation #%s. Reply STOP to unsubscribe.",
 		appt.Doctor.Name,
 		FormatDateReadable(appt.Slot.Date),
-		appt.Slot.StartTime,
+		FormatTimeReadable(appt.Slot.StartTime),
 		appt.ID[:8],
 	)
 	sendSMS(appt.Patient.Phone, msg)
@@ -26,7 +26,7 @@ func SendReminderSMS(appt *models.Appointment) {
 	msg := fmt.Sprintf(
 		"Kyron Medical reminder: Your appt with Dr. %s is tomorrow at %s. 1250 Healthcare Blvd, SF. See you then!",
 		appt.Doctor.Name,
-		appt.Slot.StartTime,
+		FormatTimeReadable(appt.Slot.StartTime),
 	)
 	sendSMS(appt.Patient.Phone, msg)
 }

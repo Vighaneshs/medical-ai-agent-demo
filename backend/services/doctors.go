@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -186,9 +187,20 @@ func endTimeForSlot(start string) string {
 func FormatDateReadable(dateStr string) string {
 	t, err := time.Parse("2006-01-02", dateStr)
 	if err != nil {
+		log.Printf("warn: FormatDateReadable: could not parse %q: %v", dateStr, err)
 		return dateStr
 	}
 	return t.Format("Monday, January 2, 2006")
+}
+
+// FormatTimeReadable converts "14:00" → "2:00 PM" for patient-facing output.
+func FormatTimeReadable(timeStr string) string {
+	t, err := time.Parse("15:04", timeStr)
+	if err != nil {
+		log.Printf("warn: FormatTimeReadable: could not parse %q: %v", timeStr, err)
+		return timeStr
+	}
+	return t.Format("3:04 PM")
 }
 
 // DoctorListForPrompt returns a formatted string of all doctors for injection into system prompt.
