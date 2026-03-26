@@ -89,18 +89,10 @@ func vapiLLMConfig(systemPrompt string, history []models.ChatMessage) map[string
 	model := os.Getenv("VAPI_MODEL")
 
 	if provider == "" {
-		if os.Getenv("AI_PROVIDER") == "gemini" {
-			provider = "google"
-		} else {
-			provider = "anthropic"
-		}
+		provider = "openai"
 	}
 	if model == "" {
-		if provider == "google" {
-			model = "gemini-1.5-flash"
-		} else {
-			model = "claude-3-5-sonnet-20241022"
-		}
+		model = "gpt-5.2"
 	}
 	log.Printf("[voice] vapi model: provider=%s model=%s", provider, model)
 
