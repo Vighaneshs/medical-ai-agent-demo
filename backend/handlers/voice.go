@@ -159,6 +159,18 @@ func NewVoiceHandler(sessions *services.SessionStore) *VoiceHandler {
 	return &VoiceHandler{sessions: sessions}
 }
 
+// voicePreamble is prepended to every system prompt sent to Vapi.
+// It overrides the chat-oriented tool-mention instructions so Claude never
+// narrates tool names or "Tool call" phrases aloud through the TTS engine.
+const voicePreamble = `VOICE MODE — YOU ARE SPEAKING ALOUD:
+- NEVER say tool names (begin_intake, collect_intake, confirm_doctor, select_slot, confirm_booking, etc.) in your spoken responses.
+- NEVER say "I'm calling a tool", "Tool call", or reference function names in any way.
+- NEVER describe internal actions — just perform them silently and continue speaking naturally.
+- Keep each spoken turn SHORT — 1–3 sentences maximum. Long responses are hard to listen to.
+- Speak conversationally, as if on a phone call.
+
+`
+
 // vapiLLMConfig returns the Vapi model block for the active AI provider,
 // including conversation history so the voice agent picks up mid-conversation.
 func vapiLLMConfig(systemPrompt string, history []models.ChatMessage) map[string]interface{} {
@@ -167,9 +179,9 @@ func vapiLLMConfig(systemPrompt string, history []models.ChatMessage) map[string
 		provider, model = "google", services.ActiveModel()
 	}
 
-	// System prompt first, then last 20 turns of chat history as context
+	// System prompt first (with voice-mode preamble), then last 20 turns of chat history as context
 	msgs := []map[string]string{
-		{"role": "system", "content": systemPrompt},
+		{"role": "system", "content": voicePreamble + systemPrompt},
 	}
 	start := 0
 	if len(history) > 20 {
