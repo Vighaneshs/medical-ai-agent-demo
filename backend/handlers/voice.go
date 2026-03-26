@@ -36,7 +36,21 @@ func voiceToolResult(sess *models.Session, toolName string, errs []string) strin
 	case "show_office_info":
 		return "Done. Tell the patient: our office is open Monday to Friday, 9 AM to 5 PM. We are located at 123 Medical Drive. Then ask if there is anything else you can help with."
 	case "collect_intake":
-		return fmt.Sprintf("Intake saved for %s %s. NEXT: tell the patient you are finding the best specialist for their concern, then pick the most appropriate doctor from your system prompt and present them by name and specialty. Ask: \"Would you like to schedule with [Dr. Name]?\" When they say yes, call confirm_doctor with the exact doctor ID string.", sess.PatientInfo.FirstName, sess.PatientInfo.LastName)
+		// Build the doctor list inline so the LLM has the IDs immediately in
+		// its tool result context without needing to scan back through the system prompt.
+		doctorLines := ""
+		for _, d := range services.Doctors {
+			doctorLines += fmt.Sprintf("\n  - %s → ID: \"%s\" (%s)", d.Name, d.ID, d.Specialty)
+		}
+		return fmt.Sprintf(
+			"Intake saved for %s %s. Reason: %q. "+
+				"NEXT: pick the best matching doctor for this patient's reason and tell them the doctor's name and specialty in 1 sentence. "+
+				"Ask: \"Would you like to schedule with [Dr. Name]?\" "+
+				"When patient says yes, call confirm_doctor with the EXACT ID from this list:%s",
+			sess.PatientInfo.FirstName, sess.PatientInfo.LastName,
+			sess.PatientInfo.ReasonForVisit,
+			doctorLines,
+		)
 	case "confirm_doctor":
 		if sess.MatchedDoctor != nil {
 			return fmt.Sprintf("Doctor confirmed: %s (%s). NEXT: ask the patient what day of the week and approximate time of day works best for them (e.g. \"What day works best for you — earlier in the week or later? And do you prefer mornings or afternoons?\"). Do NOT read out the full list of slots. Once they express a preference, silently find the closest available slot from your system prompt that matches, then call select_slot with date (YYYY-MM-DD) and startTime (HH:MM).", sess.MatchedDoctor.Name, sess.MatchedDoctor.Specialty)

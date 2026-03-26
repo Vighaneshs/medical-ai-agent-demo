@@ -155,7 +155,7 @@ If they want to cancel the entire appointment process and go back to the hub, ca
 		}
 
 		sb.WriteString(fmt.Sprintf(`CURRENT TASK — APPOINTMENT SCHEDULING:
-Patient is scheduling with %s (%s).
+Patient is scheduling with %s (ID: "%s", Specialty: %s).
 
 AVAILABLE SLOTS (format: Weekday YYYY-MM-DD HH:MM-HH:MM):
 %s
@@ -172,7 +172,7 @@ If the patient asks questions, answer them naturally.
 If the patient does not want *any* of the slots or wants to see a *different doctor*, call cancel_scheduling immediately.
 If they want to cancel everything and restart, call restart_booking_flow.
 `,
-			doctorName, doctorSpecialty,
+			doctorName, doctorID, doctorSpecialty,
 			availabilityStr,
 			doctorName, doctorName,
 		))
@@ -181,7 +181,7 @@ If they want to cancel everything and restart, call restart_booking_flow.
 		doctorName := ""
 		slotInfo := ""
 		if sess.MatchedDoctor != nil {
-			doctorName = fmt.Sprintf("%s (%s)", sess.MatchedDoctor.Name, sess.MatchedDoctor.Specialty)
+			doctorName = fmt.Sprintf("%s (ID: \"%s\", %s)", sess.MatchedDoctor.Name, sess.MatchedDoctor.ID, sess.MatchedDoctor.Specialty)
 		}
 		if sess.SelectedSlot != nil {
 			slotInfo = fmt.Sprintf("%s at %s–%s",
