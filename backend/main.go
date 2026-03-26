@@ -42,9 +42,9 @@ func main() {
 	}
 
 	corsHandler := cors.New(cors.Options{
-		AllowedOrigins:   []string{frontendURL},
+		AllowedOrigins:   []string{frontendURL, "https://api.vapi.ai"},
 		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
-		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization", "x-vapi-secret"},
 		AllowCredentials: true,
 	})
 	r.Use(corsHandler.Handler)
@@ -59,6 +59,7 @@ func main() {
 		r.Post("/voice/call-phone", voiceHandler.HandleCallPhone)
 		r.Post("/voice/webhook", voiceHandler.HandleWebhook)
 		r.Post("/voice/tool", voiceHandler.HandleToolCall)
+		r.Options("/voice/tool", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 		r.Get("/doctors", handlers.HandleDoctors)
 		r.Get("/appointment", handlers.HandleAppointment)
 		r.Get("/session", handlers.HandleSession)
