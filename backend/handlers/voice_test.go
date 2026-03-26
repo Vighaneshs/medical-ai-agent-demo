@@ -17,27 +17,45 @@ import (
 
 func TestVapiLLMConfig_DefaultsToAnthropic(t *testing.T) {
 	t.Setenv("AI_PROVIDER", "")
+	t.Setenv("VAPI_PROVIDER", "")
+	t.Setenv("VAPI_MODEL", "")
 	cfg := vapiLLMConfig("test prompt", nil)
 
-	// Vapi requires "provider" in the model block.
 	if cfg["provider"] != "anthropic" {
-		t.Errorf("provider = %q, want anthropic (default when AI_PROVIDER unset)", cfg["provider"])
+		t.Errorf("provider = %q, want anthropic", cfg["provider"])
 	}
-	// Model name intentionally absent — let the Vapi dashboard choose.
-	if _, ok := cfg["model"]; ok {
-		t.Error("model name should not be set — Vapi dashboard controls this")
+	if cfg["model"] != "claude-3-5-sonnet-20241022" {
+		t.Errorf("model = %q, want claude-3-5-sonnet-20241022", cfg["model"])
 	}
 	if _, ok := cfg["messages"]; !ok {
-		t.Error("messages must be present in vapiLLMConfig")
+		t.Error("messages must be present")
 	}
 }
 
 func TestVapiLLMConfig_GeminiProvider(t *testing.T) {
 	t.Setenv("AI_PROVIDER", "gemini")
+	t.Setenv("VAPI_PROVIDER", "")
+	t.Setenv("VAPI_MODEL", "")
 	cfg := vapiLLMConfig("test prompt", nil)
 
 	if cfg["provider"] != "google" {
-		t.Errorf("provider = %q, want google for AI_PROVIDER=gemini", cfg["provider"])
+		t.Errorf("provider = %q, want google", cfg["provider"])
+	}
+	if cfg["model"] != "gemini-1.5-flash" {
+		t.Errorf("model = %q, want gemini-1.5-flash", cfg["model"])
+	}
+}
+
+func TestVapiLLMConfig_ExplicitEnvVars(t *testing.T) {
+	t.Setenv("VAPI_PROVIDER", "anthropic")
+	t.Setenv("VAPI_MODEL", "claude-3-opus-20240229")
+	cfg := vapiLLMConfig("test prompt", nil)
+
+	if cfg["provider"] != "anthropic" {
+		t.Errorf("provider = %q, want anthropic", cfg["provider"])
+	}
+	if cfg["model"] != "claude-3-opus-20240229" {
+		t.Errorf("model = %q, want claude-3-opus-20240229", cfg["model"])
 	}
 }
 

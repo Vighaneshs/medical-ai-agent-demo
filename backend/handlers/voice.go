@@ -80,15 +80,29 @@ const voicePreamble = `VOICE MODE — YOU ARE SPEAKING ALOUD:
 `
 
 // vapiLLMConfig returns the Vapi model override block.
-// Vapi requires "provider" when you supply a model block — omitting it causes
-// a validation error. We include the provider (derived from AI_PROVIDER) but
-// not the model name, so Vapi uses whatever model is configured in the
-// dashboard for that provider.
+// Vapi requires both "provider" and "model" — set VAPI_PROVIDER and VAPI_MODEL
+// in your .env to control which model Vapi uses for voice calls, e.g.:
+//   VAPI_PROVIDER=anthropic  VAPI_MODEL=claude-3-5-sonnet-20241022
+//   VAPI_PROVIDER=google     VAPI_MODEL=gemini-1.5-flash
 func vapiLLMConfig(systemPrompt string, history []models.ChatMessage) map[string]interface{} {
-	provider := "anthropic"
-	if os.Getenv("AI_PROVIDER") == "gemini" {
-		provider = "google"
+	provider := os.Getenv("VAPI_PROVIDER")
+	model := os.Getenv("VAPI_MODEL")
+
+	if provider == "" {
+		if os.Getenv("AI_PROVIDER") == "gemini" {
+			provider = "google"
+		} else {
+			provider = "anthropic"
+		}
 	}
+	if model == "" {
+		if provider == "google" {
+			model = "gemini-1.5-flash"
+		} else {
+			model = "claude-3-5-sonnet-20241022"
+		}
+	}
+	log.Printf("[voice] vapi model: provider=%s model=%s", provider, model)
 
 	// System prompt first (with voice-mode preamble), then last 20 turns of chat history as context.
 	msgs := []map[string]string{
@@ -103,13 +117,14 @@ func vapiLLMConfig(systemPrompt string, history []models.ChatMessage) map[string
 			continue
 		}
 		msgs = append(msgs, map[string]string{
-			"role":    m.Role, // "user" | "assistant" — Vapi normalises for each provider
+			"role":    m.Role,
 			"content": m.Content,
 		})
 	}
 
 	return map[string]interface{}{
 		"provider": provider,
+		"model":    model,
 		"messages": msgs,
 	}
 }
