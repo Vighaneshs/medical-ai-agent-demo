@@ -15,18 +15,29 @@ import (
 
 // ─── vapiLLMConfig ────────────────────────────────────────────────────────────
 
-func TestVapiLLMConfig_NoProviderOrModel(t *testing.T) {
+func TestVapiLLMConfig_DefaultsToAnthropic(t *testing.T) {
+	t.Setenv("AI_PROVIDER", "")
 	cfg := vapiLLMConfig("test prompt", nil)
 
-	// Provider and model are intentionally absent — Vapi uses the dashboard model.
-	if _, ok := cfg["provider"]; ok {
-		t.Error("provider should not be set in vapiLLMConfig — use dashboard model")
+	// Vapi requires "provider" in the model block.
+	if cfg["provider"] != "anthropic" {
+		t.Errorf("provider = %q, want anthropic (default when AI_PROVIDER unset)", cfg["provider"])
 	}
+	// Model name intentionally absent — let the Vapi dashboard choose.
 	if _, ok := cfg["model"]; ok {
-		t.Error("model should not be set in vapiLLMConfig — use dashboard model")
+		t.Error("model name should not be set — Vapi dashboard controls this")
 	}
 	if _, ok := cfg["messages"]; !ok {
 		t.Error("messages must be present in vapiLLMConfig")
+	}
+}
+
+func TestVapiLLMConfig_GeminiProvider(t *testing.T) {
+	t.Setenv("AI_PROVIDER", "gemini")
+	cfg := vapiLLMConfig("test prompt", nil)
+
+	if cfg["provider"] != "google" {
+		t.Errorf("provider = %q, want google for AI_PROVIDER=gemini", cfg["provider"])
 	}
 }
 

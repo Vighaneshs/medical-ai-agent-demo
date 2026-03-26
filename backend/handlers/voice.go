@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -15,125 +16,6 @@ import (
 	"kyron-medical/models"
 	"kyron-medical/services"
 )
-
-// vapiToolDefinitions returns a Vapi-compatible tool list for all 8 session
-// state tools. Each tool has a server URL so Vapi POSTs calls to our handler.
-func vapiToolDefinitions(toolURL string) []map[string]interface{} {
-	server := map[string]interface{}{"url": toolURL, "timeoutSeconds": 20}
-
-	defs := []struct {
-		name        string
-		description string
-		properties  map[string]interface{}
-		required    []interface{}
-	}{
-		{
-			name:        "begin_intake",
-			description: "Start the appointment scheduling intake flow when the patient wants to book",
-			properties:  map[string]interface{}{},
-			required:    []interface{}{},
-		},
-		{
-			name:        "begin_prescription",
-			description: "Start a prescription refill inquiry flow",
-			properties:  map[string]interface{}{},
-			required:    []interface{}{},
-		},
-		{
-			name:        "show_office_info",
-			description: "Switch to office hours and location information flow",
-			properties:  map[string]interface{}{},
-			required:    []interface{}{},
-		},
-		{
-			name:        "collect_intake",
-			description: "Save patient intake information once all 6 fields are confirmed",
-			properties: map[string]interface{}{
-				"firstName":      map[string]string{"type": "string"},
-				"lastName":       map[string]string{"type": "string"},
-				"dob":            map[string]interface{}{"type": "string", "description": "YYYY-MM-DD"},
-				"phone":          map[string]string{"type": "string"},
-				"email":          map[string]string{"type": "string"},
-				"reasonForVisit": map[string]string{"type": "string"},
-			},
-			required: []interface{}{"firstName", "lastName", "dob", "phone", "email", "reasonForVisit"},
-		},
-		{
-			name:        "confirm_doctor",
-			description: "Confirm the matched doctor after the patient agrees",
-			properties:  map[string]interface{}{"doctorId": map[string]string{"type": "string"}},
-			required:    []interface{}{"doctorId"},
-		},
-		{
-			name:        "select_slot",
-			description: "Record the patient's chosen appointment slot",
-			properties: map[string]interface{}{
-				"date":      map[string]interface{}{"type": "string", "description": "YYYY-MM-DD"},
-				"startTime": map[string]interface{}{"type": "string", "description": "HH:MM"},
-			},
-			required: []interface{}{"date", "startTime"},
-		},
-		{
-			name:        "confirm_booking",
-			description: "Finalize the appointment booking",
-			properties:  map[string]interface{}{"smsOptIn": map[string]string{"type": "boolean"}},
-			required:    []interface{}{"smsOptIn"},
-		},
-		{
-			name:        "log_prescription_request",
-			description: "Log a prescription refill request",
-			properties: map[string]interface{}{
-				"medication":     map[string]string{"type": "string"},
-				"prescriberName": map[string]string{"type": "string"},
-				"pharmacyName":   map[string]string{"type": "string"},
-				"pharmacyPhone":  map[string]string{"type": "string"},
-			},
-			required: []interface{}{"medication", "pharmacyName"},
-		},
-		{
-			name:        "reject_doctor",
-			description: "Call this when the patient explicitly rejects the matched doctor",
-			properties:  map[string]interface{}{},
-			required:    []interface{}{},
-		},
-		{
-			name:        "cancel_scheduling",
-			description: "Call this when the patient rejects all time slots or wants a different doctor",
-			properties:  map[string]interface{}{},
-			required:    []interface{}{},
-		},
-		{
-			name:        "cancel_selection",
-			description: "Call this when the patient rejects the final appointment summary and wants a different time",
-			properties:  map[string]interface{}{},
-			required:    []interface{}{},
-		},
-		{
-			name:        "restart_booking_flow",
-			description: "Call this if the patient wants to cancel everything and start completely from scratch",
-			properties:  map[string]interface{}{},
-			required:    []interface{}{},
-		},
-	}
-
-	result := make([]map[string]interface{}, len(defs))
-	for i, d := range defs {
-		result[i] = map[string]interface{}{
-			"type": "function",
-			"function": map[string]interface{}{
-				"name":        d.name,
-				"description": d.description,
-				"parameters": map[string]interface{}{
-					"type":       "object",
-					"properties": d.properties,
-					"required":   d.required,
-				},
-			},
-			"server": server,
-		}
-	}
-	return result
-}
 
 // voiceToolResult returns a natural-language spoken sentence that Vapi feeds
 // back to the LLM as the tool's return value.
@@ -197,13 +79,18 @@ const voicePreamble = `VOICE MODE — YOU ARE SPEAKING ALOUD:
 
 `
 
-// vapiLLMConfig returns the Vapi model override block containing only the
-// dynamic system prompt and conversation history. Provider and model name are
-// intentionally omitted so Vapi uses whatever model is configured in the
-// dashboard — this avoids Vapi silently falling back to a weak default when
-// it doesn't recognise a model string.
+// vapiLLMConfig returns the Vapi model override block.
+// Vapi requires "provider" when you supply a model block — omitting it causes
+// a validation error. We include the provider (derived from AI_PROVIDER) but
+// not the model name, so Vapi uses whatever model is configured in the
+// dashboard for that provider.
 func vapiLLMConfig(systemPrompt string, history []models.ChatMessage) map[string]interface{} {
-	// System prompt first (with voice-mode preamble), then last 20 turns of chat history as context
+	provider := "anthropic"
+	if os.Getenv("AI_PROVIDER") == "gemini" {
+		provider = "google"
+	}
+
+	// System prompt first (with voice-mode preamble), then last 20 turns of chat history as context.
 	msgs := []map[string]string{
 		{"role": "system", "content": voicePreamble + systemPrompt},
 	}
@@ -222,6 +109,7 @@ func vapiLLMConfig(systemPrompt string, history []models.ChatMessage) map[string
 	}
 
 	return map[string]interface{}{
+		"provider": provider,
 		"messages": msgs,
 	}
 }
@@ -296,11 +184,6 @@ func (h *VoiceHandler) HandleInitiate(w http.ResponseWriter, r *http.Request) {
 		"model":        vapiLLMConfig(systemPrompt, sess.Messages),
 		"metadata":     map[string]string{"sessionId": sess.ID},
 	}
-	if bu := os.Getenv("BACKEND_URL"); bu != "" {
-		overrides["tools"] = vapiToolDefinitions(bu + "/api/voice/tool")
-	} else {
-		log.Printf("[voice] BACKEND_URL not set — tool webhooks disabled for this call")
-	}
 	resp := models.VoiceInitiateResponse{
 		AssistantID:        os.Getenv("VAPI_ASSISTANT_ID"),
 		AssistantOverrides: overrides,
@@ -342,9 +225,6 @@ func (h *VoiceHandler) HandleCallPhone(w http.ResponseWriter, r *http.Request) {
 	phoneOverrides := map[string]interface{}{
 		"firstMessage": firstMessage,
 		"model":        vapiLLMConfig(systemPrompt, sess.Messages),
-	}
-	if bu := os.Getenv("BACKEND_URL"); bu != "" {
-		phoneOverrides["tools"] = vapiToolDefinitions(bu + "/api/voice/tool")
 	}
 	payload := map[string]interface{}{
 		"assistantId":        assistantID,
@@ -415,9 +295,6 @@ func (h *VoiceHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 				"model":        vapiLLMConfig(systemPrompt, sess.Messages),
 				"metadata":     map[string]string{"sessionId": sess.ID},
 			}
-			if bu := os.Getenv("BACKEND_URL"); bu != "" {
-				overrides["tools"] = vapiToolDefinitions(bu + "/api/voice/tool")
-			}
 		}
 	}
 
@@ -434,42 +311,81 @@ func (h *VoiceHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 // function, persist the session, and return a natural-language result that
 // Vapi feeds back to the LLM so it can continue the conversation.
 func (h *VoiceHandler) HandleToolCall(w http.ResponseWriter, r *http.Request) {
+	// Read body once so we can log the raw payload for debugging.
+	rawBody, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read body", http.StatusBadRequest)
+		return
+	}
+	log.Printf("[voice/tool] raw payload: %s", string(rawBody))
+
 	var payload map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+	if err := json.Unmarshal(rawBody, &payload); err != nil {
 		http.Error(w, "invalid payload", http.StatusBadRequest)
 		return
 	}
 
+	// Vapi wraps the event in a "message" object, but the exact structure can
+	// vary. Try message.call first, then top-level call as fallback.
 	msg, _ := payload["message"].(map[string]interface{})
-	call, _ := msg["call"].(map[string]interface{})
-
-	// Resolve session: prefer metadata.sessionId, fall back to caller phone.
-	sessionID := ""
-	if meta, ok := call["metadata"].(map[string]interface{}); ok {
-		sessionID, _ = meta["sessionId"].(string)
+	var call map[string]interface{}
+	if msg != nil {
+		call, _ = msg["call"].(map[string]interface{})
 	}
-	if sessionID == "" {
+	if call == nil {
+		call, _ = payload["call"].(map[string]interface{})
+	}
+	log.Printf("[voice/tool] msg keys=%v call keys=%v", mapKeys(msg), mapKeys(call))
+
+	// Resolve session ID: check every plausible location Vapi might put it.
+	sessionID := ""
+	for _, src := range []map[string]interface{}{
+		nestedMap(call, "metadata"),
+		nestedMap(msg, "metadata"),
+		nestedMap(payload, "metadata"),
+	} {
+		if id, _ := src["sessionId"].(string); id != "" {
+			sessionID = id
+			break
+		}
+	}
+
+	// Phone-number fallback for inbound calls that never hit the webhook.
+	if sessionID == "" && call != nil {
 		if customer, ok := call["customer"].(map[string]interface{}); ok {
-			phone, _ := customer["number"].(string)
-			if phone != "" {
-				log.Printf("[voice/tool] inbound caller %s not found in memory, creating new session", phone)
-				sessionID = uuid.New().String()
-				sessTemp := h.sessions.GetOrCreate(sessionID)
-				sessTemp.PhoneNumber = phone
-				h.sessions.Save(sessTemp)
+			if phone, _ := customer["number"].(string); phone != "" {
+				if sess := h.sessions.GetByPhone(phone); sess != nil {
+					sessionID = sess.ID
+					log.Printf("[voice/tool] resolved session %s via phone %s", sessionID, phone)
+				} else {
+					log.Printf("[voice/tool] inbound caller %s not found — creating new session", phone)
+					sessionID = uuid.New().String()
+					sessTemp := h.sessions.GetOrCreate(sessionID)
+					sessTemp.PhoneNumber = phone
+					h.sessions.Save(sessTemp)
+				}
 			}
 		}
 	}
+
 	if sessionID == "" {
-		log.Printf("[voice/tool] cannot identify session — no metadata.sessionId or phone match")
+		log.Printf("[voice/tool] cannot identify session — payload keys: %v", mapKeys(payload))
 		http.Error(w, "cannot identify session", http.StatusBadRequest)
 		return
 	}
 
 	sess := h.sessions.GetOrCreate(sessionID)
 
-	// Parse the tool call list.
-	rawList, _ := msg["toolCallList"].([]interface{})
+	// Parse the tool call list. Vapi uses "toolCallList" in the message body.
+	var rawList []interface{}
+	if msg != nil {
+		rawList, _ = msg["toolCallList"].([]interface{})
+	}
+	if len(rawList) == 0 {
+		rawList, _ = payload["toolCallList"].([]interface{})
+	}
+	log.Printf("[voice/tool] session=%s tool_calls=%d", sessionID, len(rawList))
+
 	calls := make([]services.ToolCallResult, 0, len(rawList))
 	ids := make([]string, 0, len(rawList))
 	for _, raw := range rawList {
@@ -501,4 +417,29 @@ func (h *VoiceHandler) HandleToolCall(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"results": results})
+}
+
+// mapKeys returns the keys of a map for logging; nil-safe.
+func mapKeys(m map[string]interface{}) []string {
+	if m == nil {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// nestedMap returns m[key] as a map; returns an empty map (never nil) so
+// callers can safely access fields without a nil check.
+func nestedMap(m map[string]interface{}, key string) map[string]interface{} {
+	if m == nil {
+		return map[string]interface{}{}
+	}
+	v, _ := m[key].(map[string]interface{})
+	if v == nil {
+		return map[string]interface{}{}
+	}
+	return v
 }
