@@ -25,6 +25,7 @@ func HandleSession(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]interface{}{
 		"state":            string(sess.State),
 		"patientFirstName": sess.PatientInfo.FirstName,
+		"messages":         sess.Messages,
 	}
 	if sess.MatchedDoctor != nil {
 		resp["doctorId"] = sess.MatchedDoctor.ID

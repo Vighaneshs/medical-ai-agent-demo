@@ -61,8 +61,8 @@ func TestVapiLLMConfig_ContainsSystemPrompt(t *testing.T) {
 	if msgs[0]["role"] != "system" {
 		t.Errorf("messages[0].role = %q, want system", msgs[0]["role"])
 	}
-	if msgs[0]["content"] != "You are a helpful assistant." {
-		t.Errorf("messages[0].content = %q, want system prompt", msgs[0]["content"])
+	if !strings.Contains(msgs[0]["content"], "You are a helpful assistant.") {
+		t.Errorf("messages[0].content = %q, want it to contain system prompt", msgs[0]["content"])
 	}
 }
 

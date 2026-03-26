@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { initiateVoiceCall, initiatePhoneCall } from '@/lib/api';
 import { SessionState } from '@/types';
@@ -14,6 +15,9 @@ interface Props {
 type BrowserCallState = 'idle' | 'connecting' | 'active' | 'ending';
 
 export function VoiceCallButton({ sessionId, onCallEnd }: Props) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const [browserState, setBrowserState] = useState<BrowserCallState>('idle');
   const [showPhoneInput, setShowPhoneInput] = useState(false);
   const [phone, setPhone] = useState('');
@@ -75,17 +79,17 @@ export function VoiceCallButton({ sessionId, onCallEnd }: Props) {
 
   // ── Active browser call overlay ─────────────────────────────────────────────
 
-  if (browserState === 'active' || browserState === 'ending') {
-    return (
-      <AnimatePresence>
+  const overlay = mounted ? createPortal(
+    <AnimatePresence>
+      {(browserState === 'active' || browserState === 'ending') && (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="fixed inset-0 z-50 flex items-center justify-center"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
           style={{ background: 'rgba(18, 23, 35, 0.85)', backdropFilter: 'blur(8px)' }}
         >
-          <div className="glass p-8 flex flex-col items-center gap-6 mx-4" style={{ maxWidth: 340, width: '100%' }}>
+          <div className="glass p-8 flex flex-col items-center gap-6 w-full shadow-2xl" style={{ maxWidth: 340, transform: 'translateY(-10vh)' }}>
             <div
               className="w-16 h-16 rounded-full flex items-center justify-center"
               style={{ background: 'linear-gradient(135deg, #577DE8, #48ACF0)' }}
@@ -117,15 +121,18 @@ export function VoiceCallButton({ sessionId, onCallEnd }: Props) {
             </motion.button>
           </div>
         </motion.div>
-      </AnimatePresence>
-    );
-  }
+      )}
+    </AnimatePresence>,
+    document.body
+  ) : null;
 
   // ── Idle — show both options ─────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col items-end gap-2">
-      <div className="flex flex-wrap items-center justify-end gap-2">
+    <>
+      {overlay}
+      <div className="flex flex-col items-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
         {/* In-browser call */}
         <motion.button
           whileTap={{ scale: 0.93 }}
@@ -250,5 +257,6 @@ export function VoiceCallButton({ sessionId, onCallEnd }: Props) {
       </AnimatePresence>
       {error && <span className="text-xs" style={{ color: 'var(--danger)' }}>{error}</span>}
     </div>
+    </>
   );
 }

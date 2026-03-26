@@ -55,8 +55,8 @@ func TestBuildGeminiTools_ToolCount(t *testing.T) {
 	if tool == nil {
 		t.Fatal("buildGeminiTools returned nil")
 	}
-	if len(tool.FunctionDeclarations) != 8 {
-		t.Errorf("expected 8 function declarations, got %d", len(tool.FunctionDeclarations))
+	if len(tool.FunctionDeclarations) != 12 {
+		t.Errorf("expected 12 function declarations, got %d", len(tool.FunctionDeclarations))
 	}
 }
 

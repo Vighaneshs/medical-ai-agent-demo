@@ -118,7 +118,10 @@ If the patient's condition does not match any of our specialties, kindly explain
 
 Tell the patient the matched doctor's name, specialty, and briefly explain why they're the right fit in 1-2 sentences. Then ask: "Would you like to schedule with [Dr. Name]?"
 
+If the patient asks a clarifying question, simply answer it naturally.
+If the patient explicitly says NO to the matched doctor or wants someone else, acknowledge it and immediately call the reject_doctor tool.
 When the patient says yes, call confirm_doctor with the doctorId (in the same response as your acknowledgement text).
+If they want to start completely from scratch, call restart_booking_flow.
 `,
 			sess.PatientInfo.FirstName, sess.PatientInfo.LastName,
 			sess.PatientInfo.ReasonForVisit,
@@ -162,6 +165,10 @@ If the patient asks for a specific day like "Tuesday", explain that %s sees pati
 
 Once the patient selects a date, show the time slots for that day and let them choose one.
 When the patient picks a specific time, say "Perfect, I've got [date] at [time] with %s locked in!" and in the same response call select_slot with date (YYYY-MM-DD) and startTime (HH:MM).
+
+If the patient asks questions, answer them naturally.
+If the patient does not want *any* of the slots or wants to see a *different doctor*, call cancel_scheduling immediately.
+If they want to cancel everything and restart, call restart_booking_flow.
 `,
 			doctorName, doctorSpecialty,
 			availabilityStr,
@@ -203,6 +210,9 @@ CRITICAL — THE APPOINTMENT DOES NOT EXIST UNTIL confirm_booking IS CALLED:
 - Wait for the tool result, then relay the confirmation number from that result to the patient.
 
 IMPORTANT: A message selecting a time slot (e.g. "I'll take Monday at 9") is NOT a confirmation — it means they chose the slot. Only call confirm_booking when the patient is directly responding YES to "Shall I confirm?".
+
+If the patient says NO to the summary or wants to pick a different time, call cancel_selection immediately!
+If they want to start completely over, call restart_booking_flow.
 `,
 			doctorName, slotInfo,
 			sess.PatientInfo.FirstName, sess.PatientInfo.LastName,
@@ -276,8 +286,12 @@ AVAILABLE TOOLS — call them only when appropriate:
 - show_office_info: call when patient wants office hours/location (works from any state)
 - collect_intake: call when you have firstName, lastName, dob, phone, email, reasonForVisit
 - confirm_doctor: call when patient confirms a specific doctor (provide doctorId)
+- reject_doctor: call when the patient explicitly rejects the matched doctor
 - select_slot: call when patient selects date + time (provide date "YYYY-MM-DD", startTime "HH:MM")
+- cancel_scheduling: call when patient rejects all slots or wants a different doctor
 - confirm_booking: call when patient confirms the appointment (provide smsOptIn boolean)
+- cancel_selection: call when the patient rejects the final confirmation and wants a different time
+- restart_booking_flow: call if they want to cancel everything and start completely from scratch
 - log_prescription_request: call when you have medication, prescriberName, pharmacyName, pharmacyPhone
 
 Only call tools when you have complete, confirmed information. Never guess or fill in placeholder values.

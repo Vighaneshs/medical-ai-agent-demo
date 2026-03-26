@@ -125,6 +125,7 @@ export async function getSession(sessionId: string) {
     doctorId?: string;
     selectedSlot?: import('@/types').TimeSlot;
     appointmentId?: string;
+    messages?: import('@/types').ChatMessage[];
   }>;
 }
 

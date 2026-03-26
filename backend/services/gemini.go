@@ -295,6 +295,26 @@ func buildGeminiTools() *genai.Tool {
 				"pharmacyPhone":  str("Pharmacy phone number"),
 			}, []string{"medication", "pharmacyName"}),
 		},
+		{
+			Name:        "reject_doctor",
+			Description: "Call when the patient explicitly rejects the matched doctor and wants a different one",
+			Parameters:  obj(map[string]*genai.Schema{}, []string{}),
+		},
+		{
+			Name:        "cancel_scheduling",
+			Description: "Call when the patient rejects all available slots or wants a different doctor",
+			Parameters:  obj(map[string]*genai.Schema{}, []string{}),
+		},
+		{
+			Name:        "cancel_selection",
+			Description: "Call when the patient rejects the final appointment summary and wants a different time",
+			Parameters:  obj(map[string]*genai.Schema{}, []string{}),
+		},
+		{
+			Name:        "restart_booking_flow",
+			Description: "Call when the patient wants to cancel everything and start completely from scratch",
+			Parameters:  obj(map[string]*genai.Schema{}, []string{}),
+		},
 	}
 
 	return &genai.Tool{FunctionDeclarations: decls}

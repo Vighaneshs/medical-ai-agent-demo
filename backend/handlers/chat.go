@@ -62,8 +62,16 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	textChunks := make(chan string, 100)
 	toolResults := make(chan []services.ToolCallResult, 1)
 
-	log.Printf("[chat] session=%s calling AI.Stream with %d messages", sess.ID, len(sess.Messages))
-	go services.AI.Stream(ctx, systemPrompt, sess.Messages, textChunks, toolResults)
+	// Context Window Sliding: keep only the last 20 messages for LLM stream
+	chatWindow := sess.Messages
+	if len(chatWindow) > 20 {
+		chatWindow = chatWindow[len(chatWindow)-20:]
+	}
+
+	oldState := sess.State
+
+	log.Printf("[chat] session=%s calling AI.Stream with %d messages (window=%d)", sess.ID, len(sess.Messages), len(chatWindow))
+	go services.AI.Stream(ctx, systemPrompt, chatWindow, textChunks, toolResults)
 
 	var assistantText string
 	chunkCount := 0
@@ -97,11 +105,12 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 
 	// Continue in three cases:
 	// 1. Tool-only turn (no text) — Gemini/Haiku sometimes calls tools silently.
-	// 2. State just moved to MATCHING — the AI said "finding a doctor" but didn't
-	//    call confirm_doctor yet; we need another turn to do the doctor matching.
+	// 2. State just transitioned to a "requires AI follow-up" state (MATCHING or BOOKED)
 	// 3. A tool call returned an error — the AI must respond to the failure.
+	justEnteredMatching := oldState != models.StateMatching && newState == models.StateMatching
+	justEnteredBooked := oldState != models.StateBooked && newState == models.StateBooked
 	needsContinuation := (strings.TrimSpace(assistantText) == "" && len(calls) > 0) ||
-		newState == models.StateMatching || newState == models.StateBooked ||
+		justEnteredMatching || justEnteredBooked ||
 		len(toolErrs) > 0
 	for attempt := 1; attempt <= 3 && needsContinuation; attempt++ {
 		if ctx.Err() != nil {
@@ -124,7 +133,13 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		sp := services.Build(sess)
 		tc := make(chan string, 100)
 		tr := make(chan []services.ToolCallResult, 1)
-		go services.AI.Stream(ctx, sp, sess.Messages, tc, tr)
+		
+		chatWindow := sess.Messages
+		if len(chatWindow) > 20 {
+			chatWindow = chatWindow[len(chatWindow)-20:]
+		}
+		
+		go services.AI.Stream(ctx, sp, chatWindow, tc, tr)
 		for chunk := range tc {
 			if ctx.Err() != nil {
 				return
@@ -145,10 +160,19 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Printf("[chat] session=%s continuation attempt=%d done: text_len=%d new_state=%s tool_errors=%d",
 			sess.ID, attempt, len(assistantText), newState, len(contErrs))
-		// Continue if: (a) silent tool-only turn, (b) state requires follow-up, or (c) new tool errors.
-		needsFollowUp := newState == models.StateMatching || newState == models.StateScheduling || newState == models.StateBooked
-		needsContinuation = (strings.TrimSpace(assistantText) == "" && (len(calls) > 0 || needsFollowUp)) ||
+		
+		// If tools were called, check if we jumped into a follow-up state again
+		if len(calls) > 0 {
+			justEnteredMatching = oldState != models.StateMatching && newState == models.StateMatching
+			justEnteredBooked = oldState != models.StateBooked && newState == models.StateBooked
+		} else {
+			justEnteredMatching, justEnteredBooked = false, false
+		}
+
+		needsContinuation = (strings.TrimSpace(assistantText) == "" && len(calls) > 0) ||
+			justEnteredMatching || justEnteredBooked ||
 			len(contErrs) > 0
+		oldState = newState
 	}
 
 	// Fallback: if the booking was confirmed but the AI produced no text (e.g. silent
@@ -244,6 +268,29 @@ func executeToolCalls(sess *models.Session, calls []services.ToolCallResult) (mo
 					doctorID, services.DoctorIDs()))
 			}
 
+		case "reject_doctor":
+			log.Printf("[chat] session=%s reject_doctor: resetting to INTAKE from MATCHING", sess.ID)
+			sess.MatchedDoctor = nil
+			sess.State = models.StateIntake
+
+		case "cancel_scheduling":
+			log.Printf("[chat] session=%s cancel_scheduling: reverting from %s to MATCHING", sess.ID, sess.State)
+			sess.SelectedSlot = nil
+			sess.MatchedDoctor = nil
+			sess.State = models.StateMatching
+
+		case "cancel_selection":
+			log.Printf("[chat] session=%s cancel_selection: reverting from %s to SCHEDULING", sess.ID, sess.State)
+			sess.SelectedSlot = nil
+			sess.State = models.StateScheduling
+
+		case "restart_booking_flow":
+			log.Printf("[chat] session=%s restart_booking_flow: resetting everything to INTAKE", sess.ID)
+			sess.SelectedSlot = nil
+			sess.MatchedDoctor = nil
+			sess.Appointment = nil
+			sess.State = models.StateIntake
+
 		case "select_slot":
 			if sess.State != models.StateScheduling {
 				log.Printf("[chat] session=%s WARN select_slot: ignored in state=%s (expected SCHEDULING)", sess.ID, sess.State)
@@ -304,6 +351,17 @@ func executeToolCalls(sess *models.Session, calls []services.ToolCallResult) (mo
 					"either the doctor or the time slot is missing. Please restart the scheduling flow with the patient.")
 				break
 			}
+
+			// RACE CONDITION FIX: Confirm slot is STILL available right before booking
+			if services.IsSlotBooked(sess.SelectedSlot.DoctorID, sess.SelectedSlot.Date, sess.SelectedSlot.StartTime) {
+				log.Printf("[chat] session=%s WARN confirm_booking: RACE CONDITION TRIGGERED! Slot taken doc=%s date=%s time=%s", 
+					sess.ID, sess.SelectedSlot.DoctorID, sess.SelectedSlot.Date, sess.SelectedSlot.StartTime)
+				sess.SelectedSlot = nil
+				sess.State = models.StateScheduling
+				errs = append(errs, "[TOOL RESULT — ERROR] confirm_booking: I am sorry, but someone else just booked that exact time slot! Please apologize to the patient, explain that the time is no longer available, and present the remaining available times for them to choose from.")
+				break
+			}
+
 			smsOptIn := boolField(call.Input, "smsOptIn")
 			sess.PatientInfo.SMSOptIn = smsOptIn
 

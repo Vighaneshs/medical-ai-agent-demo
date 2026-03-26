@@ -195,6 +195,30 @@ func buildClaudeTools() []anthropic.ToolUnionParam {
 			},
 			required: []string{"medication", "pharmacyName"},
 		},
+		{
+			name:        "reject_doctor",
+			description: "Call when the patient explicitly rejects the matched doctor and wants a different one",
+			properties:  map[string]interface{}{},
+			required:    []string{},
+		},
+		{
+			name:        "cancel_scheduling",
+			description: "Call when the patient rejects all available slots or wants a different doctor",
+			properties:  map[string]interface{}{},
+			required:    []string{},
+		},
+		{
+			name:        "cancel_selection",
+			description: "Call when the patient rejects the final appointment summary and wants to pick a different time",
+			properties:  map[string]interface{}{},
+			required:    []string{},
+		},
+		{
+			name:        "restart_booking_flow",
+			description: "Call when the patient wants to cancel everything and start completely from scratch",
+			properties:  map[string]interface{}{},
+			required:    []string{},
+		},
 	}
 
 	result := make([]anthropic.ToolUnionParam, len(tools))

@@ -10,18 +10,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
+
 	"kyron-medical/models"
 	"kyron-medical/services"
 )
-
-// backendURL returns the externally reachable URL for this server.
-// Used to build tool webhook URLs sent to Vapi.
-func backendURL() string {
-	if u := os.Getenv("BACKEND_URL"); u != "" {
-		return u
-	}
-	return "http://localhost:8080"
-}
 
 // vapiToolDefinitions returns a Vapi-compatible tool list for all 8 session
 // state tools. Each tool has a server URL so Vapi POSTs calls to our handler.
@@ -97,6 +90,30 @@ func vapiToolDefinitions(toolURL string) []map[string]interface{} {
 			},
 			required: []interface{}{"medication", "pharmacyName"},
 		},
+		{
+			name:        "reject_doctor",
+			description: "Call this when the patient explicitly rejects the matched doctor",
+			properties:  map[string]interface{}{},
+			required:    []interface{}{},
+		},
+		{
+			name:        "cancel_scheduling",
+			description: "Call this when the patient rejects all time slots or wants a different doctor",
+			properties:  map[string]interface{}{},
+			required:    []interface{}{},
+		},
+		{
+			name:        "cancel_selection",
+			description: "Call this when the patient rejects the final appointment summary and wants a different time",
+			properties:  map[string]interface{}{},
+			required:    []interface{}{},
+		},
+		{
+			name:        "restart_booking_flow",
+			description: "Call this if the patient wants to cancel everything and start completely from scratch",
+			properties:  map[string]interface{}{},
+			required:    []interface{}{},
+		},
 	}
 
 	result := make([]map[string]interface{}, len(defs))
@@ -148,6 +165,14 @@ func voiceToolResult(sess *models.Session, toolName string, errs []string) strin
 		return "ERROR — booking failed, appointment was not saved. Apologise to the patient and offer to try again."
 	case "log_prescription_request":
 		return "Prescription request logged. Let the patient know their request has been received."
+	case "reject_doctor":
+		return "Doctor rejected. Ask the patient for different symptoms so we can find another specialist."
+	case "cancel_scheduling":
+		return "Scheduling cancelled. Ask the patient if they want to choose a different doctor."
+	case "cancel_selection":
+		return "Selection cancelled. Read the previous available time slots to the patient again."
+	case "restart_booking_flow":
+		return "Booking flow restarted. Ask the patient for their symptoms again."
 	}
 	return "Done."
 }
@@ -270,15 +295,19 @@ func (h *VoiceHandler) HandleInitiate(w http.ResponseWriter, r *http.Request) {
 
 	firstMessage := buildVoiceFirstMessage(sess, false)
 
-	toolURL := backendURL() + "/api/voice/tool"
+	overrides := map[string]interface{}{
+		"firstMessage": firstMessage,
+		"model":        vapiLLMConfig(systemPrompt, sess.Messages),
+		"metadata":     map[string]string{"sessionId": sess.ID},
+	}
+	if bu := os.Getenv("BACKEND_URL"); bu != "" {
+		overrides["tools"] = vapiToolDefinitions(bu + "/api/voice/tool")
+	} else {
+		log.Printf("[voice] BACKEND_URL not set — tool webhooks disabled for this call")
+	}
 	resp := models.VoiceInitiateResponse{
-		AssistantID: os.Getenv("VAPI_ASSISTANT_ID"),
-		AssistantOverrides: map[string]interface{}{
-			"firstMessage": firstMessage,
-			"model":        vapiLLMConfig(systemPrompt, sess.Messages),
-			"tools":        vapiToolDefinitions(toolURL),
-			"metadata":     map[string]string{"sessionId": sess.ID},
-		},
+		AssistantID:        os.Getenv("VAPI_ASSISTANT_ID"),
+		AssistantOverrides: overrides,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -314,17 +343,19 @@ func (h *VoiceHandler) HandleCallPhone(w http.ResponseWriter, r *http.Request) {
 
 	firstMessage := buildVoiceFirstMessage(sess, true)
 
-	toolURL := backendURL() + "/api/voice/tool"
+	phoneOverrides := map[string]interface{}{
+		"firstMessage": firstMessage,
+		"model":        vapiLLMConfig(systemPrompt, sess.Messages),
+	}
+	if bu := os.Getenv("BACKEND_URL"); bu != "" {
+		phoneOverrides["tools"] = vapiToolDefinitions(bu + "/api/voice/tool")
+	}
 	payload := map[string]interface{}{
-		"assistantId": assistantID,
-		"assistantOverrides": map[string]interface{}{
-			"firstMessage": firstMessage,
-			"model":        vapiLLMConfig(systemPrompt, sess.Messages),
-			"tools":        vapiToolDefinitions(toolURL),
-		},
-		"metadata":      map[string]string{"sessionId": req.SessionID},
-		"customer":      map[string]interface{}{"number": req.Phone},
-		"phoneNumberId": phoneNumberID,
+		"assistantId":        assistantID,
+		"assistantOverrides": phoneOverrides,
+		"metadata":           map[string]string{"sessionId": req.SessionID},
+		"customer":           map[string]interface{}{"number": req.Phone},
+		"phoneNumberId":      phoneNumberID,
 	}
 
 	body, _ := json.Marshal(payload)
@@ -383,12 +414,13 @@ func (h *VoiceHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 
 			systemPrompt := services.Build(sess)
 
-			toolURL := backendURL() + "/api/voice/tool"
 			overrides = map[string]interface{}{
 				"firstMessage": buildVoiceFirstMessage(sess, true),
 				"model":        vapiLLMConfig(systemPrompt, sess.Messages),
-				"tools":        vapiToolDefinitions(toolURL),
 				"metadata":     map[string]string{"sessionId": sess.ID},
+			}
+			if bu := os.Getenv("BACKEND_URL"); bu != "" {
+				overrides["tools"] = vapiToolDefinitions(bu + "/api/voice/tool")
 			}
 		}
 	}
@@ -424,9 +456,11 @@ func (h *VoiceHandler) HandleToolCall(w http.ResponseWriter, r *http.Request) {
 		if customer, ok := call["customer"].(map[string]interface{}); ok {
 			phone, _ := customer["number"].(string)
 			if phone != "" {
-				if sess := h.sessions.GetByPhone(phone); sess != nil {
-					sessionID = sess.ID
-				}
+				log.Printf("[voice/tool] inbound caller %s not found in memory, creating new session", phone)
+				sessionID = uuid.New().String()
+				sessTemp := h.sessions.GetOrCreate(sessionID)
+				sessTemp.PhoneNumber = phone
+				h.sessions.Save(sessTemp)
 			}
 		}
 	}

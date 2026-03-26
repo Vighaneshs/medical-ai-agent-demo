@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from 'uuid'; // Keep uuidv4 as it's used elsewhere
 import { ChatMessage, Doctor, SessionState, TimeSlot } from '@/types';
 import { sendMessage, getDoctors, getSession } from '@/lib/api';
 import { SESSION_KEY } from '@/lib/constants';
@@ -100,11 +100,26 @@ export function ChatInterface() {
     }).catch(() => {});
   }, []);
 
-  // Auto-send greeting on mount
+  // Fetch history on mount, otherwise auto-send greeting
   useEffect(() => {
     if (hasGreeted.current) return;
     hasGreeted.current = true;
-    handleSend('Hello');
+    
+    getSession(sessionId.current)
+      .then(data => {
+        if (data && data.messages && data.messages.length > 0) {
+          setMessages(data.messages);
+          if (data.state) setSessionState(data.state as SessionState);
+          if (data.doctorId) setMatchedDoctorId(data.doctorId);
+          if (data.selectedSlot) setSelectedSlot(data.selectedSlot);
+          if (data.patientFirstName) setPatientFirstName(data.patientFirstName);
+        } else {
+          handleSend('Hello');
+        }
+      })
+      .catch(() => {
+        handleSend('Hello');
+      });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
