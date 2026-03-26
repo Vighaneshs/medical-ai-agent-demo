@@ -317,8 +317,17 @@ func (h *VoiceHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	msg, _ := payload["message"].(map[string]interface{})
+	var call map[string]interface{}
+	if msg != nil {
+		call, _ = msg["call"].(map[string]interface{})
+	}
+	if call == nil {
+		call, _ = payload["call"].(map[string]interface{})
+	}
+
 	callerPhone := ""
-	if call, ok := payload["call"].(map[string]interface{}); ok {
+	if call != nil {
 		if customer, ok := call["customer"].(map[string]interface{}); ok {
 			callerPhone, _ = customer["number"].(string)
 		}
@@ -327,20 +336,27 @@ func (h *VoiceHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	overrides := map[string]interface{}{}
 
 	if callerPhone != "" {
-		if sess := h.sessions.GetByPhone(callerPhone); sess != nil {
-			summary := services.AI.Summarize(context.Background(), sess.Messages)
-			if summary != "" {
-				sess.ChatSummary = summary
-				h.sessions.Save(sess)
-			}
+		sess := h.sessions.GetByPhone(callerPhone)
+		if sess == nil {
+			log.Printf("[voice/webhook] inbound caller %s not found — creating new session", callerPhone)
+			sessionID := uuid.New().String()
+			sess = h.sessions.GetOrCreate(sessionID)
+			sess.PhoneNumber = callerPhone
+			h.sessions.Save(sess)
+		}
 
-			systemPrompt := services.Build(sess)
+		summary := services.AI.Summarize(context.Background(), sess.Messages)
+		if summary != "" {
+			sess.ChatSummary = summary
+			h.sessions.Save(sess)
+		}
 
-			overrides = map[string]interface{}{
-				"firstMessage": buildVoiceFirstMessage(sess, true),
-				"model":        vapiLLMConfig(systemPrompt, sess.Messages),
-				"metadata":     map[string]string{"sessionId": sess.ID},
-			}
+		systemPrompt := services.Build(sess)
+
+		overrides = map[string]interface{}{
+			"firstMessage": buildVoiceFirstMessage(sess, true),
+			"model":        vapiLLMConfig(systemPrompt, sess.Messages),
+			"metadata":     map[string]string{"sessionId": sess.ID},
 		}
 	}
 
