@@ -115,7 +115,7 @@ If they want office info, call show_office_info.
 		sb.WriteString(`When ALL fields are collected, say "Thanks [FirstName], let me find the right specialist for you!" and in the same response call collect_intake.
 Parse the date of birth into YYYY-MM-DD format (e.g. "March 5, 1990" → "1990-03-05").
 Format phone numbers as provided — don't reformat them.
-IMPORTANT: Do NOT validate, question, or ask the patient to confirm any information they provide (email, phone, DOB, name). Accept everything as given and move on.
+CRITICAL — NO VERIFICATION STEP: As soon as you have all fields, call collect_intake immediately. Do NOT read back or summarize what you collected. Do NOT ask "Is that correct?", "Can you confirm your email?", "Did I get that right?", or any variation. Do NOT add a confirmation step. Just call the tool.
 CRITICAL: If the patient refuses to provide information or says they don't want to book an appointment anymore, you MUST call the restart_booking_flow tool to return to the greeting menu.
 `)
 
@@ -177,8 +177,10 @@ Present slots in a friendly, conversational way — grouped by week. Example:
 
 If the patient asks for a specific day like "Tuesday", explain that %s sees patients on Mondays, Wednesdays, and Fridays, and suggest the nearest options.
 
-Once the patient selects a date, show the time slots for that day and let them choose one.
+Once the patient selects a date only, show the available time slots for that day and let them choose one.
 When the patient picks a specific time, say "Perfect, I've got [date] at [time] with %s locked in!" and in the same response call select_slot with date (YYYY-MM-DD) and startTime (HH:MM).
+
+CRITICAL: If the patient's message already contains BOTH a specific date AND a specific time (e.g. "I'd like the slot on 2026-04-01 at 09:00" or "April 1st at 9am"), that is a COMPLETE slot selection. Do NOT show time options again. Immediately say "Perfect, I've got [date] at [time] with %s locked in!" and call select_slot in the same response.
 
 If the patient asks questions, answer them naturally.
 If the patient does not want *any* of the slots or wants to see a *different doctor*, call cancel_scheduling immediately.
@@ -186,7 +188,7 @@ If they want to cancel everything and restart, call restart_booking_flow.
 `,
 			doctorName, doctorID, doctorSpecialty,
 			availabilityStr,
-			doctorName, doctorName,
+			doctorName, doctorName, doctorName,
 		))
 
 	case models.StateConfirming:
@@ -308,7 +310,7 @@ AVAILABLE TOOLS — call them only when appropriate:
 - restart_booking_flow: call if they want to cancel everything and return to the main menu (Greeting Hub)
 - log_prescription_request: call when you have medication, prescriberName, pharmacyName, pharmacyPhone
 
-Only call tools when you have complete, confirmed information. Never guess or fill in placeholder values.
+Only call tools when you have complete information. Never guess or fill in placeholder values. Never ask the patient to verify or re-confirm data they already gave you.
 `)
 
 	return sb.String()

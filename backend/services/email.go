@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -44,7 +45,7 @@ func ScheduleReminder(appt *models.Appointment) {
 	}
 
 	apptTime := time.Date(apptDate.Year(), apptDate.Month(), apptDate.Day(),
-		hour.Hour(), hour.Minute(), 0, 0, time.Local)
+		hour.Hour(), hour.Minute(), 0, 0, clinicLoc)
 
 	reminderTime := apptTime.Add(-24 * time.Hour)
 	delay := time.Until(reminderTime)
@@ -100,6 +101,7 @@ func sendEmail(to, subject, html string) {
 func buildConfirmationHTML(appt *models.Appointment) string {
 	calDate := appt.Slot.Date
 	calTime := appt.Slot.StartTime
+	ctz := url.QueryEscape(clinicLoc.String())
 
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html>
@@ -134,7 +136,7 @@ func buildConfirmationHTML(appt *models.Appointment) string {
           </table>
           <!-- Calendar links -->
           <p style="color:rgba(255,255,255,0.6);font-size:13px;margin:0 0 8px;">Add to calendar:</p>
-          <a href="https://calendar.google.com/calendar/r/eventedit?text=Kyron+Medical+Appointment&dates=%sT%s00/%sT%s00&location=1250+Healthcare+Blvd,+San+Francisco,+CA&details=Appointment+with+%s" style="display:inline-block;margin-right:8px;padding:8px 16px;background:#577DE8;color:#fff;text-decoration:none;border-radius:8px;font-size:13px;">Google Calendar</a>
+          <a href="https://calendar.google.com/calendar/r/eventedit?text=Kyron+Medical+Appointment&dates=%sT%s00/%sT%s00&ctz=%s&location=1250+Healthcare+Blvd,+San+Francisco,+CA&details=Appointment+with+%s" style="display:inline-block;margin-right:8px;padding:8px 16px;background:#577DE8;color:#fff;text-decoration:none;border-radius:8px;font-size:13px;">Google Calendar</a>
         </td></tr>
         <tr><td style="padding:24px 40px;border-top:1px solid rgba(255,255,255,0.08);text-align:center;">
           <p style="color:#8892a4;font-size:13px;margin:0;">Kyron Medical · (555) 201-0000 · kyronmedical.com</p>
@@ -151,6 +153,7 @@ func buildConfirmationHTML(appt *models.Appointment) string {
 		// Google Calendar date params (basic — removes dashes/colons)
 		removeChars(calDate, "-"), removeChars(calTime, ":")+":00",
 		removeChars(calDate, "-"), removeChars(appt.Slot.EndTime, ":")+":00",
+		ctz,
 		appt.Doctor.Name,
 	)
 }

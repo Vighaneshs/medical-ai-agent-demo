@@ -3,11 +3,30 @@ package services
 import (
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
 	"kyron-medical/models"
 )
+
+// clinicLoc is the timezone for all appointment scheduling and availability generation.
+// Override with CLINIC_TIMEZONE env var (default: America/Los_Angeles).
+var clinicLoc *time.Location
+
+func init() {
+	tz := os.Getenv("CLINIC_TIMEZONE")
+	if tz == "" {
+		tz = "America/Los_Angeles"
+	}
+	var err error
+	clinicLoc, err = time.LoadLocation(tz)
+	if err != nil {
+		log.Printf("warn: could not load timezone %q, falling back to UTC: %v", tz, err)
+		clinicLoc = time.UTC
+	}
+	log.Printf("clinic timezone: %s", clinicLoc)
+}
 
 // ─── Hardcoded Doctors ────────────────────────────────────────────────────────
 
@@ -130,7 +149,8 @@ var slotHours = []string{"09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "
 // Mon/Wed/Fri only, 09:00–16:00 hourly (no 12:00 lunch slot).
 // ~20% of slots are deterministically pre-blocked to simulate real schedules.
 func GenerateAvailability(doctorID string) []models.TimeSlot {
-	today := time.Now().Truncate(24 * time.Hour)
+	now := time.Now().In(clinicLoc)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, clinicLoc)
 	start := today.AddDate(0, 0, 7)
 	end := today.AddDate(0, 0, 60)
 

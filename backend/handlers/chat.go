@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -99,8 +100,10 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[chat] session=%s new_state=%s tool_errors=%d", sess.ID, newState, len(toolErrs))
 	// Inject tool errors into session history so the AI sees what failed
 	// and can apologise + offer corrected options on the next turn.
+	// Use "assistant" role so the message alternation stays valid (Claude Sonnet
+	// requires strict user/assistant alternation — no consecutive same-role messages).
 	for _, e := range toolErrs {
-		h.sessions.AppendMessage(sess, "user", e)
+		h.sessions.AppendMessage(sess, "assistant", e)
 	}
 
 	// Continue in three cases:
@@ -133,12 +136,31 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		sp := services.Build(sess)
 		tc := make(chan string, 100)
 		tr := make(chan []services.ToolCallResult, 1)
-		
+
 		chatWindow := sess.Messages
 		if len(chatWindow) > 20 {
 			chatWindow = chatWindow[len(chatWindow)-20:]
 		}
-		
+		// Claude Sonnet+ requires conversations to end with a user message.
+		// If the window ends with an assistant message (from the turn we just appended),
+		// add a synthetic user prompt so the AI has full context and proper alternation.
+		// Use a state-specific message so the AI doesn't interpret it as unclear patient speech.
+		if len(chatWindow) > 0 && chatWindow[len(chatWindow)-1].Role == "assistant" {
+			extended := make([]models.ChatMessage, len(chatWindow)+1)
+			copy(extended, chatWindow)
+			var contMsg string
+			switch sess.State {
+			case models.StateMatching:
+				contMsg = "Please go ahead and tell me about the best specialist for my condition."
+			case models.StateBooked:
+				contMsg = "Great, thank you."
+			default:
+				contMsg = "Please continue."
+			}
+			extended[len(chatWindow)] = models.ChatMessage{Role: "user", Content: contMsg}
+			chatWindow = extended
+		}
+
 		go services.AI.Stream(ctx, sp, chatWindow, tc, tr)
 		for chunk := range tc {
 			if ctx.Err() != nil {
@@ -155,7 +177,7 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[chat] session=%s continuation attempt=%d produced %d tool calls", sess.ID, attempt, len(calls))
 			newState, contErrs = executeToolCalls(sess, calls)
 			for _, e := range contErrs {
-				h.sessions.AppendMessage(sess, "user", e)
+				h.sessions.AppendMessage(sess, "assistant", e)
 			}
 		}
 		log.Printf("[chat] session=%s continuation attempt=%d done: text_len=%d new_state=%s tool_errors=%d",
@@ -217,6 +239,26 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 func executeToolCalls(sess *models.Session, calls []services.ToolCallResult) (models.SessionState, []string) {
 	var errs []string
 
+	// Sort tool calls to resolve out-of-order execution from voice agents (e.g. calling select_slot and confirm_booking simultaneously)
+	toolOrder := map[string]int{
+		"reject_doctor":            0,
+		"cancel_scheduling":        0,
+		"cancel_selection":         0,
+		"restart_booking_flow":     0,
+		"begin_intake":             1,
+		"begin_prescription":       1,
+		"show_office_info":         1,
+		"collect_intake":           2,
+		"confirm_doctor":           3,
+		"select_slot":              4,
+		"confirm_booking":          5,
+		"log_prescription_request": 6,
+	}
+
+	sort.SliceStable(calls, func(i, j int) bool {
+		return toolOrder[calls[i].ToolName] < toolOrder[calls[j].ToolName]
+	})
+
 	for _, call := range calls {
 		switch call.ToolName {
 		case "begin_intake":
@@ -234,8 +276,8 @@ func executeToolCalls(sess *models.Session, calls []services.ToolCallResult) (mo
 			sess.State = models.StateHours
 
 		case "collect_intake":
-			if sess.State != models.StateIntake {
-				log.Printf("[chat] session=%s WARN collect_intake: ignored in state=%s (expected INTAKE)", sess.ID, sess.State)
+			if sess.State != models.StateGreeting && sess.State != models.StateIntake {
+				log.Printf("[chat] session=%s WARN collect_intake: ignored in state=%s (expected GREETING or INTAKE)", sess.ID, sess.State)
 				break
 			}
 			sess.PatientInfo = models.PatientInfo{
