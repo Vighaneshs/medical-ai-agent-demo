@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid';
 import { ChatMessage, Doctor, SessionState, TimeSlot } from '@/types';
-import { sendMessage, getDoctors } from '@/lib/api';
+import { sendMessage, getDoctors, getSession } from '@/lib/api';
 import { SESSION_KEY } from '@/lib/constants';
 import { MessageBubble } from './MessageBubble';
 import { TypingIndicator } from './TypingIndicator';
@@ -48,6 +48,46 @@ export function ChatInterface() {
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
+
+  // Sync local UI state from backend session — called after a voice call ends
+  // so any bookings/state changes made during the call are reflected in chat.
+  const syncSession = useCallback(async () => {
+    try {
+      const snap = await getSession(sessionId.current);
+      const newState = snap.state as SessionState;
+
+      setSessionState(prev => {
+        if (prev === newState) return prev;
+
+        // If a booking happened during the voice call, add a notification bubble
+        if (newState === 'BOOKED' && prev !== 'BOOKED' && snap.appointmentId) {
+          const short = snap.appointmentId.slice(0, 8);
+          const name = snap.patientFirstName ? `, ${snap.patientFirstName}` : '';
+          setMessages(msgs => [...msgs, {
+            id: crypto.randomUUID(),
+            role: 'assistant' as const,
+            content: `Your appointment was confirmed during your voice call${name}! Confirmation #${short}. Is there anything else I can help you with?`,
+            createdAt: new Date().toISOString(),
+          }]);
+        }
+
+        return newState;
+      });
+
+      if (snap.doctorId) setMatchedDoctorId(snap.doctorId);
+      if (snap.selectedSlot) setSelectedSlot(snap.selectedSlot);
+    } catch {
+      // Session not found or network error — silently ignore
+    }
+  }, []);
+
+  // Sync when the browser tab regains focus (covers phone call case where the
+  // user switches away while on the phone and comes back after hanging up).
+  useEffect(() => {
+    const onFocus = () => syncSession();
+    document.addEventListener('visibilitychange', onFocus);
+    return () => document.removeEventListener('visibilitychange', onFocus);
+  }, [syncSession]);
 
   useEffect(() => { scrollToBottom(); }, [messages, streamingText, scrollToBottom]);
 
@@ -240,7 +280,7 @@ export function ChatInterface() {
         </div>
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
           <StatusBadge state={sessionState} />
-          <VoiceCallButton sessionId={sessionId.current} sessionState={sessionState} />
+          <VoiceCallButton sessionId={sessionId.current} sessionState={sessionState} onCallEnd={syncSession} />
         </div>
       </div>
 

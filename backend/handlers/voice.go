@@ -143,8 +143,9 @@ func voiceToolResult(sess *models.Session, toolName string, errs []string) strin
 		}
 	case "confirm_booking":
 		if sess.Appointment != nil {
-			return fmt.Sprintf("Appointment confirmed! Confirmation number %s. Tell the patient their booking is complete and ask if there is anything else you can help with.", sess.Appointment.ID[:8])
+			return fmt.Sprintf("SUCCESS — appointment is now saved in our system. Confirmation number: %s. Tell the patient exactly this: their appointment is confirmed, their confirmation number is %s, and a confirmation email has been sent to %s. Then ask if there is anything else you can help with.", sess.Appointment.ID[:8], sess.Appointment.ID[:8], sess.Appointment.Patient.Email)
 		}
+		return "ERROR — booking failed, appointment was not saved. Apologise to the patient and offer to try again."
 	case "log_prescription_request":
 		return "Prescription request logged. Let the patient know their request has been received."
 	}
@@ -165,7 +166,7 @@ func NewVoiceHandler(sessions *services.SessionStore) *VoiceHandler {
 const voicePreamble = `VOICE MODE — YOU ARE SPEAKING ALOUD:
 - NEVER say tool names (begin_intake, collect_intake, confirm_doctor, select_slot, confirm_booking, etc.) in your spoken responses.
 - NEVER say "I'm calling a tool", "Tool call", or reference function names in any way.
-- NEVER describe internal actions — just perform them silently and continue speaking naturally.
+- Tools MUST still be called — you just don't narrate them. The action does not happen unless the tool is invoked. Never skip a required tool call.
 - Keep each spoken turn SHORT — 1–3 sentences maximum. Long responses are hard to listen to.
 - Speak conversationally, as if on a phone call.
 

@@ -193,9 +193,14 @@ The patient is reviewing their appointment:
 If the patient has NOT yet been asked to confirm, briefly present the appointment summary above and ask:
 "Shall I confirm this appointment? And would you like an SMS reminder at %s?"
 
-When the patient responds YES or CONFIRM to that question, immediately call confirm_booking.
+When the patient responds YES or CONFIRM to that question, call confirm_booking immediately.
 - smsOptIn=true if they mentioned SMS/text, false otherwise.
 - Do NOT ask follow-up questions before calling the tool.
+
+CRITICAL — THE APPOINTMENT DOES NOT EXIST UNTIL confirm_booking IS CALLED:
+- Do NOT say "confirmed", "booked", or "all set" until you have received a successful result back from the confirm_booking tool call.
+- If you say the appointment is confirmed without calling the tool, the patient will show up and have no appointment on file. This is a serious error.
+- Wait for the tool result, then relay the confirmation number from that result to the patient.
 
 IMPORTANT: A message selecting a time slot (e.g. "I'll take Monday at 9") is NOT a confirmation — it means they chose the slot. Only call confirm_booking when the patient is directly responding YES to "Shall I confirm?".
 `,

@@ -8,11 +8,12 @@ import { SessionState } from '@/types';
 interface Props {
   sessionId: string;
   sessionState: SessionState;
+  onCallEnd?: () => void;
 }
 
 type BrowserCallState = 'idle' | 'connecting' | 'active' | 'ending';
 
-export function VoiceCallButton({ sessionId }: Props) {
+export function VoiceCallButton({ sessionId, onCallEnd }: Props) {
   const [browserState, setBrowserState] = useState<BrowserCallState>('idle');
   const [showPhoneInput, setShowPhoneInput] = useState(false);
   const [phone, setPhone] = useState('');
@@ -34,7 +35,7 @@ export function VoiceCallButton({ sessionId }: Props) {
       const vapi = new Vapi(process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY || '');
       vapiRef[1](vapi);
       vapi.on('call-start', () => setBrowserState('active'));
-      vapi.on('call-end', () => { setBrowserState('idle'); vapiRef[1](null); });
+      vapi.on('call-end', () => { setBrowserState('idle'); vapiRef[1](null); onCallEnd?.(); });
       vapi.on('error', (err: any) => {
         console.error('Vapi error:', err);
         setError('Call failed. Please try again.');

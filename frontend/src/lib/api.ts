@@ -116,6 +116,18 @@ export async function initiateVoiceCall(sessionId: string) {
   return res.json();
 }
 
+export async function getSession(sessionId: string) {
+  const res = await fetch(`${API_URL}/api/session?sessionId=${sessionId}`);
+  if (!res.ok) throw new Error('Session not found');
+  return res.json() as Promise<{
+    state: string;
+    patientFirstName?: string;
+    doctorId?: string;
+    selectedSlot?: import('@/types').TimeSlot;
+    appointmentId?: string;
+  }>;
+}
+
 export async function initiatePhoneCall(sessionId: string, phone: string) {
   const res = await fetch(`${API_URL}/api/voice/call-phone`, {
     method: 'POST',

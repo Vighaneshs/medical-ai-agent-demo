@@ -61,6 +61,7 @@ func main() {
 		r.Post("/voice/tool", voiceHandler.HandleToolCall)
 		r.Get("/doctors", handlers.HandleDoctors)
 		r.Get("/appointment", handlers.HandleAppointment)
+		r.Get("/session", handlers.HandleSession)
 		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("ok"))
 		})
