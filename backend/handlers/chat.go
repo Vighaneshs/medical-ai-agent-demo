@@ -337,6 +337,10 @@ func executeToolCalls(sess *models.Session, calls []services.ToolCallResult) (mo
 		case "select_slot":
 			if sess.State != models.StateScheduling {
 				log.Printf("[chat] session=%s WARN select_slot: ignored in state=%s (expected SCHEDULING)", sess.ID, sess.State)
+				errs = append(errs, fmt.Sprintf(
+					"[TOOL RESULT — ERROR] select_slot: cannot select slot in state %s. "+
+						"A doctor must be confirmed first (call confirm_doctor to reach SCHEDULING state).",
+					sess.State))
 				break
 			}
 			date := normalizeDate(strField(call.Input, "date"))
@@ -372,13 +376,25 @@ func executeToolCalls(sess *models.Session, calls []services.ToolCallResult) (mo
 						break
 					}
 				}
+				log.Printf("[chat] session=%s select_slot: doctorID=%q date=%q startTime=%q totalSlots=%d slotFound=%v slotAvailable=%v",
+					sess.ID, sess.MatchedDoctor.ID, date, startTime, len(slots), endT != "", slotAvailable)
 				if !slotAvailable {
-					log.Printf("[chat] session=%s WARN select_slot: slot not available doctor=%s date=%s time=%s",
-						sess.ID, sess.MatchedDoctor.ID, date, startTime)
+					// Collect the next few available slots to include in the error so the LLM can offer them.
+					var nextAvail []string
+					for _, s := range slots {
+						if s.Available {
+							nextAvail = append(nextAvail, fmt.Sprintf("%s %s", s.Date, s.StartTime))
+							if len(nextAvail) >= 5 {
+								break
+							}
+						}
+					}
+					log.Printf("[chat] session=%s WARN select_slot: slot not available doctor=%s date=%s time=%s nextAvailable=%v",
+						sess.ID, sess.MatchedDoctor.ID, date, startTime, nextAvail)
 					errs = append(errs, fmt.Sprintf(
-						"[TOOL RESULT — ERROR] select_slot: the slot on %s at %s is not in the available list for %s. "+
-							"Please only offer times from the provided availability and ask the patient to choose again.",
-						date, startTime, sess.MatchedDoctor.Name))
+						"[TOOL RESULT — ERROR] select_slot: the slot on %s at %s is not available for %s. "+
+							"The next available slots are: %v. Please apologize and offer one of these to the patient.",
+						date, startTime, sess.MatchedDoctor.Name, nextAvail))
 					break
 				}
 				sess.SelectedSlot = &models.TimeSlot{
