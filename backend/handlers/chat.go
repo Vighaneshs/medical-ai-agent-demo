@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -480,8 +481,11 @@ func boolField(m map[string]interface{}, key string) bool {
 	return false
 }
 
+// ordinalRe strips English ordinal suffixes: "1st"→"1", "2nd"→"2", "3rd"→"3", "4th"→"4", etc.
+var ordinalRe = regexp.MustCompile(`(?i)\b(\d+)(st|nd|rd|th)\b`)
+
 // normalizeTime converts LLM-produced time strings to HH:MM (24-hour, zero-padded).
-// Handles all common variants the LLM might output.
+// Accepts flexible input: "9am", "9:00 AM", "09:00", "9 AM", "21:00", etc.
 func normalizeTime(s string) string {
 	s = strings.TrimSpace(s)
 	formats := []string{
@@ -490,22 +494,30 @@ func normalizeTime(s string) string {
 		"3:04PM", "3:04AM", // 12-hour without space
 		"03:04 PM", "03:04 AM", // zero-padded 12-hour with space
 		"03:04PM", "03:04AM", // zero-padded 12-hour without space
-		"3 PM", "3 AM", // hour-only, e.g. "9 AM" → "09:00"
+		"3 PM", "3 AM", // hour-only with space, e.g. "9 AM"
+		"3PM", "3AM", // hour-only no space, e.g. "9AM"
 		"3:04:05 PM", "3:04:05 AM", // with seconds
 	}
-	for _, f := range formats {
-		if t, err := time.Parse(f, s); err == nil {
-			return t.Format("15:04")
+	// Try original string, then uppercased (handles "9am"→"9AM", "9:30pm"→"9:30PM").
+	for _, src := range []string{s, strings.ToUpper(s)} {
+		for _, f := range formats {
+			if t, err := time.Parse(f, src); err == nil {
+				return t.Format("15:04")
+			}
 		}
 	}
-	return s // return as-is if unrecognised; validation below will catch it
+	return s // return as-is if unrecognised; slot lookup will catch it
 }
 
 // normalizeDate ensures dates are YYYY-MM-DD (zero-padded).
-// Handles ISO variants and natural-language forms the LLM may echo from prompts.
+// Accepts flexible input: ISO, natural language, ordinals, and year-less forms.
 func normalizeDate(s string) string {
 	s = strings.TrimSpace(s)
-	formats := []string{
+
+	// Strip ordinal suffixes so "April 1st" → "April 1", "March 31st" → "March 31".
+	stripped := ordinalRe.ReplaceAllString(s, "$1")
+
+	withYearFormats := []string{
 		"2006-1-2",                // ISO with/without padding
 		"January 2, 2006",         // "April 7, 2026"
 		"Jan 2, 2006",             // "Apr 7, 2026"
@@ -513,10 +525,36 @@ func normalizeDate(s string) string {
 		"Monday, Jan 2, 2006",
 		"1/2/2006", // US short form
 	}
-	for _, f := range formats {
-		if t, err := time.Parse(f, s); err == nil {
-			return t.Format("2006-01-02")
+	for _, src := range []string{stripped, s} {
+		for _, f := range withYearFormats {
+			if t, err := time.Parse(f, src); err == nil {
+				return t.Format("2006-01-02")
+			}
 		}
 	}
-	return s
+
+	// Try month+day formats without a year (voice agents often omit the year).
+	// Default to the current year; advance to next year if the date has already passed.
+	shortFormats := []string{
+		"January 2",
+		"Jan 2",
+		"Monday, January 2",
+		"Monday, Jan 2",
+	}
+	now := time.Now()
+	today := now.Truncate(24 * time.Hour)
+	for _, src := range []string{stripped, s} {
+		for _, f := range shortFormats {
+			if t, err := time.Parse(f, src); err == nil {
+				year := now.Year()
+				result := time.Date(year, t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+				if result.Before(today) {
+					result = time.Date(year+1, t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+				}
+				return result.Format("2006-01-02")
+			}
+		}
+	}
+
+	return stripped // ordinal-stripped fallback
 }

@@ -111,7 +111,7 @@ const voicePreamble = `VOICE MODE — YOU ARE SPEAKING ALOUD:
 BOOKING FLOW — always follow this sequence, using tool results to guide each step:
 1. begin_intake → collect all 6 fields → collect_intake
 2. confirm_doctor (use exact doctor ID from the doctor list)
-3. Ask patient for their preferred day/time — do NOT list all slots. Once they express a preference, silently pick the nearest matching available slot and call select_slot (date YYYY-MM-DD, startTime HH:MM).
+3. Ask patient for their preferred day/time — do NOT list all slots. Once they express a preference, silently pick the nearest matching available slot and call select_slot. IMPORTANT: date MUST be YYYY-MM-DD (e.g. "2026-04-01") and startTime MUST be HH:MM 24-hour (e.g. "09:00") — look up the exact values from the available slots in your system prompt, do not guess or write them out as natural language.
 4. confirm_booking (smsOptIn true/false) — MUST be called before telling patient they are booked
 Never skip a step. Never tell the patient their appointment is confirmed until confirm_booking returns SUCCESS.
 
