@@ -142,7 +142,7 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	// tool-only turn), synthesise a confirmation message so the patient always sees one.
 	if strings.TrimSpace(assistantText) == "" && sess.State == models.StateBooked && sess.Appointment != nil {
 		apptID := sess.Appointment.ID[:8]
-		fallback := fmt.Sprintf("Your appointment is confirmed! Confirmation #%s — a confirmation has been sent to %s. See you soon, %s!",
+		fallback := fmt.Sprintf("Your appointment is confirmed! Confirmation #%s — a confirmation has been sent to %s. See you soon, %s! Is there anything else I can help you with today?",
 			apptID, sess.PatientInfo.Email, sess.PatientInfo.FirstName)
 		assistantText = fallback
 		data, _ := json.Marshal(models.SSEChunk{Text: fallback})

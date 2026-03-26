@@ -198,15 +198,21 @@ export function ChatInterface() {
   }, [messages, sessionState, availableSlotDates]);
 
   const showQuickReplies =
-    sessionState === 'GREETING' &&
+    (sessionState === 'GREETING' || sessionState === 'BOOKED') &&
     !isStreaming &&
     messages.some(m => m.role === 'assistant');
 
-  const quickReplies = [
-    { label: 'Schedule an appointment', message: 'I want to schedule an appointment with a specialist' },
-    { label: 'Prescription refill', message: 'I need a prescription refill' },
-    { label: 'Office hours & location', message: 'What are your office hours and location?' },
-  ];
+  const quickReplies = sessionState === 'BOOKED'
+    ? [
+        { label: 'Book another appointment', message: 'I\'d like to book another appointment' },
+        { label: 'Prescription refill', message: 'I need a prescription refill' },
+        { label: 'Office hours & location', message: 'What are your office hours and location?' },
+      ]
+    : [
+        { label: 'Schedule an appointment', message: 'I want to schedule an appointment with a specialist' },
+        { label: 'Prescription refill', message: 'I need a prescription refill' },
+        { label: 'Office hours & location', message: 'What are your office hours and location?' },
+      ];
 
   // Show scheduling overlays only when not currently streaming a response
   const showSchedulingOverlay = sessionState === 'SCHEDULING' && matchedDoctorId && !isStreaming && !selectedSlot;
