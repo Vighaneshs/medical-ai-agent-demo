@@ -331,7 +331,9 @@ func executeToolCalls(sess *models.Session, calls []services.ToolCallResult) (mo
 			log.Printf("[chat] session=%s restart_booking_flow: resetting everything to GREETING", sess.ID)
 			sess.SelectedSlot = nil
 			sess.MatchedDoctor = nil
-			sess.Appointment = nil
+			if sess.State != models.StateBooked {
+				sess.Appointment = nil
+			}
 			sess.State = models.StateGreeting
 
 		case "select_slot":

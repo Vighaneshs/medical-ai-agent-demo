@@ -344,6 +344,25 @@ func (h *VoiceHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 				} else {
 					sess.LastCallDroppedAt = time.Time{}
 				}
+
+				if artifact, ok := msg["artifact"].(map[string]interface{}); ok {
+					if msgs, ok := artifact["messages"].([]interface{}); ok {
+						for _, mRaw := range msgs {
+							m, ok := mRaw.(map[string]interface{})
+							if !ok { continue }
+							role, _ := m["role"].(string)
+							message, _ := m["message"].(string)
+							
+							if (role == "user" || role == "assistant" || role == "bot") && message != "" {
+								if role == "bot" { role = "assistant" }
+								h.sessions.AppendMessage(sess, role, "[Voice] " + message)
+							}
+						}
+					} else if transcript, ok := artifact["transcript"].(string); ok && transcript != "" {
+						h.sessions.AppendMessage(sess, "assistant", "**Voice Call Transcript:**\n" + transcript)
+					}
+				}
+
 				h.sessions.Save(sess)
 			}
 		}
