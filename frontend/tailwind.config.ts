@@ -18,8 +18,8 @@ const config: Config = {
         muted: "var(--text-muted)",
       },
       boxShadow: {
-        'glass-glow': '0 0 20px rgba(0, 210, 255, 0.3)',
-        'glass-inner': 'inset 0 1px 0 rgba(255, 255, 255, 0.15)',
+        'glass-glow': '0 0 20px rgba(87, 125, 232, 0.25)',
+        'glass-inner': 'inset 0 1px 0 rgba(255, 255, 255, 0.1)',
       }
     },
   },
