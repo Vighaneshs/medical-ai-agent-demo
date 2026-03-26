@@ -33,6 +33,18 @@ PRACTICE INFORMATION:
 
 `)
 
+	// ── PATIENT HISTORY BLOCK (Long-Term Memory) ────────────────────────────
+	if sess.PhoneNumber != "" {
+		history := Store.GetPatientHistory(sess.PhoneNumber)
+		if len(history) > 0 {
+			sb.WriteString("\nRETURNING PATIENT HISTORY:\nThis patient has visited Kyron Medical before. Here is their confirmed appointment history:\n")
+			for _, v := range history {
+				sb.WriteString(fmt.Sprintf("- %s: Saw %s (%s) for %q\n", v.Date, v.DoctorName, v.Specialty, v.Reason))
+			}
+			sb.WriteString("\nUse this medical history to greet them warmly as a returning patient and naturally ask if their new appointment is related to past visits.\n\n")
+		}
+	}
+
 	// ── STATE-SPECIFIC INSTRUCTIONS ─────────────────────────────────────────
 	switch sess.State {
 	case models.StateGreeting:

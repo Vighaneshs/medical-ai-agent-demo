@@ -296,8 +296,8 @@ func executeToolCalls(sess *models.Session, calls []services.ToolCallResult) (mo
 				log.Printf("[chat] session=%s WARN select_slot: ignored in state=%s (expected SCHEDULING)", sess.ID, sess.State)
 				break
 			}
-			date := strField(call.Input, "date")
-			startTime := strField(call.Input, "startTime")
+			date := normalizeDate(strField(call.Input, "date"))
+			startTime := normalizeTime(strField(call.Input, "startTime"))
 			if date != "" && startTime != "" && sess.MatchedDoctor != nil {
 				if services.IsSlotBooked(sess.MatchedDoctor.ID, date, startTime) {
 					log.Printf("[chat] session=%s WARN select_slot: slot already booked doctor=%s date=%s time=%s",
@@ -378,6 +378,7 @@ func executeToolCalls(sess *models.Session, calls []services.ToolCallResult) (mo
 			sess.State = models.StateBooked
 
 			services.BookSlot(sess.SelectedSlot.DoctorID, sess.SelectedSlot.Date, sess.SelectedSlot.StartTime)
+			services.Store.RecordVisit(sess.PatientInfo, *sess.MatchedDoctor, *sess.SelectedSlot)
 
 			go services.SendConfirmationEmail(appt)
 			if smsOptIn {
@@ -416,4 +417,27 @@ func boolField(m map[string]interface{}, key string) bool {
 		}
 	}
 	return false
+}
+
+// normalizeTime converts LLM-produced time strings to HH:MM (24-hour, zero-padded).
+// Handles: "9:00", "09:00", "9:00 AM", "2:00 PM", "14:00" etc.
+func normalizeTime(s string) string {
+	s = strings.TrimSpace(s)
+	formats := []string{"15:04", "3:04 PM", "3:04 AM", "3:04PM", "3:04AM", "15:04:05"}
+	for _, f := range formats {
+		if t, err := time.Parse(f, s); err == nil {
+			return t.Format("15:04")
+		}
+	}
+	return s // return as-is if unrecognised; validation below will catch it
+}
+
+// normalizeDate ensures dates are YYYY-MM-DD (zero-padded).
+// Handles: "2026-4-7", "2026-04-07" etc.
+func normalizeDate(s string) string {
+	s = strings.TrimSpace(s)
+	if t, err := time.Parse("2006-1-2", s); err == nil {
+		return t.Format("2006-01-02")
+	}
+	return s
 }

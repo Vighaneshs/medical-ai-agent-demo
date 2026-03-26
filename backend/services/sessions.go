@@ -99,6 +99,25 @@ func migrate(db *sql.DB) error {
 		session_id  TEXT NOT NULL REFERENCES sessions(id),
 		PRIMARY KEY (doctor_id, date, start_time)
 	);
+
+	CREATE TABLE IF NOT EXISTS patients (
+		phone       TEXT PRIMARY KEY,
+		first_name  TEXT NOT NULL,
+		last_name   TEXT NOT NULL,
+		email       TEXT,
+		dob         TEXT
+	);
+
+	CREATE TABLE IF NOT EXISTS patient_visits (
+		id          TEXT PRIMARY KEY,
+		phone       TEXT NOT NULL REFERENCES patients(phone),
+		doctor_name TEXT NOT NULL,
+		specialty   TEXT NOT NULL,
+		date        TEXT NOT NULL,
+		reason      TEXT NOT NULL,
+		created_at  INTEGER NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_visits_phone ON patient_visits(phone);
 	`
 	_, err := db.Exec(schema)
 	return err
@@ -189,6 +208,72 @@ func (s *SessionStore) AppendMessage(sess *models.Session, role, content string)
 	if err != nil {
 		log.Printf("warn: could not persist message for session %s: %v", sess.ID, err)
 	}
+}
+
+// ─── Long-Term Patient History ────────────────────────────────────────────────
+
+type PastVisit struct {
+	DoctorName string
+	Specialty  string
+	Date       string
+	Reason     string
+}
+
+// RecordVisit saves the successful appointment booking to the permanent patient log.
+func (s *SessionStore) RecordVisit(p models.PatientInfo, doc models.Doctor, slot models.TimeSlot) {
+	if p.Phone == "" {
+		return
+	}
+	
+	// Upsert patient demographics
+	_, err := s.db.Exec(`
+		INSERT INTO patients (phone, first_name, last_name, email, dob)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(phone) DO UPDATE SET
+			first_name=excluded.first_name, last_name=excluded.last_name, 
+			email=excluded.email, dob=excluded.dob
+	`, p.Phone, p.FirstName, p.LastName, p.Email, p.DOB)
+	
+	if err != nil {
+		log.Printf("warn: could not upsert patient demographics: %v", err)
+		return // Do not fail the booking, just log
+	}
+
+	// Insert historical visit
+	_, err = s.db.Exec(`
+		INSERT INTO patient_visits (id, phone, doctor_name, specialty, date, reason, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, uuid.New().String(), p.Phone, doc.Name, doc.Specialty, slot.Date, p.ReasonForVisit, time.Now().Unix())
+
+	if err != nil {
+		log.Printf("warn: could not persist historical visit: %v", err)
+	}
+}
+
+// GetPatientHistory fetches up to 10 previous visits for context injection.
+func (s *SessionStore) GetPatientHistory(phone string) []PastVisit {
+	if phone == "" {
+		return nil
+	}
+	rows, err := s.db.Query(`
+		SELECT doctor_name, specialty, date, reason 
+		FROM patient_visits 
+		WHERE phone = ? 
+		ORDER BY created_at DESC LIMIT 10
+	`, phone)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var visits []PastVisit
+	for rows.Next() {
+		var v PastVisit
+		if err := rows.Scan(&v.DoctorName, &v.Specialty, &v.Date, &v.Reason); err == nil {
+			visits = append(visits, v)
+		}
+	}
+	return visits
 }
 
 // ─── DB helpers ───────────────────────────────────────────────────────────────

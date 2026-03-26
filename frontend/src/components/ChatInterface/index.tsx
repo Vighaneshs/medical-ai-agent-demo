@@ -205,12 +205,9 @@ export function ChatInterface() {
   const matchedDoctor = matchedDoctorId ? doctorsMap[matchedDoctorId] : null;
 
   const handleSlotSelect = useCallback((slot: TimeSlot) => {
-    const d = new Date(slot.date + 'T00:00:00');
-    const dateStr = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-    const [h, m] = slot.startTime.split(':').map(Number);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const h12 = h % 12 || 12;
-    handleSend(`I'll take ${dateStr} at ${h12}:${m.toString().padStart(2, '0')} ${ampm}`);
+    // Send the exact ISO date and HH:MM time so the AI passes them directly to
+    // select_slot without a two-step date-then-time flow.
+    handleSend(`I'd like to book the slot on ${slot.date} at ${slot.startTime}`);
   }, [handleSend]);
 
   const handleConfirmBooking = useCallback((smsOptIn: boolean) => {
