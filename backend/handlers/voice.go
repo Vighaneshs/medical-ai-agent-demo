@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -462,6 +463,12 @@ func (h *VoiceHandler) HandleToolCall(w http.ResponseWriter, r *http.Request) {
 		if argsStr != "" {
 			json.Unmarshal([]byte(argsStr), &input)
 		}
+		// Voice-specific fix: confirm_doctor often arrives with empty doctorId because
+		// the LLM omits the field even when an enum is configured. Resolve it here
+		// before it reaches executeToolCalls so the shared handler always gets a valid ID.
+		if name == "confirm_doctor" {
+			input = voiceResolveDoctorID(input, sess, sessionID)
+		}
 		calls = append(calls, services.ToolCallResult{ToolName: name, Input: input})
 		log.Printf("[voice/tool] session=%s tool=%s args=%s", sessionID, name, argsStr)
 	}
@@ -544,4 +551,57 @@ func nestedMap(m map[string]interface{}, key string) map[string]interface{} {
 		return map[string]interface{}{}
 	}
 	return v
+}
+
+// voiceResolveDoctorID ensures the confirm_doctor tool input always has a valid doctorId.
+// The voice LLM frequently omits or empties this field even when Vapi enums are configured.
+// Resolution order:
+//  1. doctorId already valid — return as-is
+//  2. doctorName field provided (if added to the Vapi tool schema) — last-name match
+//  3. Keyword match against patient's reason for visit
+func voiceResolveDoctorID(input map[string]interface{}, sess *models.Session, sessionID string) map[string]interface{} {
+	if input == nil {
+		input = map[string]interface{}{}
+	}
+
+	doctorID, _ := input["doctorId"].(string)
+	if services.GetDoctorByID(doctorID) != nil {
+		return input // already valid
+	}
+
+	// Try doctorName if the Vapi tool passes it
+	if name, _ := input["doctorName"].(string); name != "" {
+		if doc := services.GetDoctorByID(name); doc != nil {
+			log.Printf("[voice/tool] session=%s confirm_doctor: resolved %q via doctorName → %s", sessionID, name, doc.ID)
+			input["doctorId"] = doc.ID
+			return input
+		}
+	}
+
+	// Keyword match from reason for visit — covers the common case where the LLM
+	// presented the right doctor by name but sent an empty doctorId.
+	reason := sess.PatientInfo.ReasonForVisit
+	if reason == "" {
+		return input
+	}
+	lower := strings.ToLower(reason)
+	best, bestCount := -1, 0
+	for i, d := range services.Doctors {
+		count := 0
+		for _, kw := range d.Keywords {
+			if strings.Contains(lower, strings.ToLower(kw)) {
+				count++
+			}
+		}
+		if count > bestCount {
+			bestCount = count
+			best = i
+		}
+	}
+	if best >= 0 && bestCount > 0 {
+		doc := &services.Doctors[best]
+		log.Printf("[voice/tool] session=%s confirm_doctor: doctorId=%q unresolved — inferred %s from reason %q", sessionID, doctorID, doc.ID, reason)
+		input["doctorId"] = doc.ID
+	}
+	return input
 }
