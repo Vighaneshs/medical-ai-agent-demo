@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"kyron-medical/models"
@@ -553,4 +554,120 @@ func TestHandleWebhook_NoCallField_EmptyOverrides(t *testing.T) {
 	if len(overrides) != 0 {
 		t.Errorf("expected empty overrides when no call field, got: %v", overrides)
 	}
+}
+
+// ─── lastAssistantMessage ─────────────────────────────────────────────────────
+
+func TestLastAssistantMessage_ReturnsLastAssistant(t *testing.T) {
+	history := []models.ChatMessage{
+		{Role: "user", Content: "Hello"},
+		{Role: "assistant", Content: "Hi there, how can I help?"},
+		{Role: "user", Content: "I need an appointment"},
+		{Role: "assistant", Content: "Sure, let me collect your details."},
+	}
+	got := lastAssistantMessage(history, 200)
+	if got != "Sure, let me collect your details." {
+		t.Errorf("got %q, want last assistant message", got)
+	}
+}
+
+func TestLastAssistantMessage_SkipsEmpty(t *testing.T) {
+	history := []models.ChatMessage{
+		{Role: "assistant", Content: "First message"},
+		{Role: "assistant", Content: ""},
+	}
+	got := lastAssistantMessage(history, 200)
+	if got != "First message" {
+		t.Errorf("got %q, want non-empty assistant message", got)
+	}
+}
+
+func TestLastAssistantMessage_TruncatesAtSentenceBoundary(t *testing.T) {
+	// Sentence boundary "." falls at index 31, which is > maxLen/2 (20), so the
+	// function should cut there rather than appending "…".
+	long := "Here is a longer first sentence. And now the second sentence goes on and on."
+	history := []models.ChatMessage{{Role: "assistant", Content: long}}
+	got := lastAssistantMessage(history, 40)
+	if len(got) > 42 {
+		t.Errorf("truncated message too long: %q", got)
+	}
+	if got[len(got)-1] != '.' {
+		t.Errorf("expected truncation at sentence boundary '.', got %q", got)
+	}
+}
+
+func TestLastAssistantMessage_EmptyHistory(t *testing.T) {
+	got := lastAssistantMessage(nil, 200)
+	if got != "" {
+		t.Errorf("expected empty string for nil history, got %q", got)
+	}
+}
+
+// ─── buildVoiceFirstMessage ───────────────────────────────────────────────────
+
+func TestBuildVoiceFirstMessage_NoNameGenericWeb(t *testing.T) {
+	sess := &models.Session{State: models.StateGreeting}
+	msg := buildVoiceFirstMessage(sess, false)
+	if msg == "" {
+		t.Error("expected non-empty message")
+	}
+	if !containsAny(msg, "Kyron", "care coordinator") {
+		t.Errorf("generic web greeting should mention Kyron: %q", msg)
+	}
+}
+
+func TestBuildVoiceFirstMessage_NoNameGenericPhone(t *testing.T) {
+	sess := &models.Session{State: models.StateGreeting}
+	msg := buildVoiceFirstMessage(sess, true)
+	if !containsAny(msg, "calling", "Kyron Medical") {
+		t.Errorf("generic phone greeting should mention calling/Kyron Medical: %q", msg)
+	}
+}
+
+func TestBuildVoiceFirstMessage_WithNameAndHistory(t *testing.T) {
+	sess := &models.Session{State: models.StateIntake}
+	sess.PatientInfo.FirstName = "Alice"
+	sess.Messages = []models.ChatMessage{
+		{Role: "user", Content: "I need an appointment"},
+		{Role: "assistant", Content: "Great, I just need a few details from you."},
+	}
+	msg := buildVoiceFirstMessage(sess, false)
+	if !containsAny(msg, "Alice") {
+		t.Errorf("message should mention patient name: %q", msg)
+	}
+	if !containsAny(msg, "details", "collecting", "specialist") {
+		t.Errorf("message should contain state context or last message recap: %q", msg)
+	}
+}
+
+func TestBuildVoiceFirstMessage_SchedulingState(t *testing.T) {
+	sess := &models.Session{State: models.StateScheduling}
+	sess.PatientInfo.FirstName = "Bob"
+	sess.MatchedDoctor = &models.Doctor{Name: "Dr. Jane Smith"}
+	msg := buildVoiceFirstMessage(sess, false)
+	if !containsAny(msg, "Dr. Jane Smith", "schedule", "appointment") {
+		t.Errorf("scheduling message should mention doctor: %q", msg)
+	}
+}
+
+func TestBuildVoiceFirstMessage_RecapsLastMessage(t *testing.T) {
+	sess := &models.Session{State: models.StateGreeting}
+	sess.PatientInfo.FirstName = "Carol"
+	sess.Messages = []models.ChatMessage{
+		{Role: "assistant", Content: "Would you like to book with Dr. Patel?"},
+	}
+	msg := buildVoiceFirstMessage(sess, false)
+	if !containsAny(msg, "Dr. Patel", "recap", "last said") {
+		t.Errorf("message should recap last assistant message: %q", msg)
+	}
+}
+
+func containsAny(s string, substrs ...string) bool {
+	lower := strings.ToLower(s)
+	for _, sub := range substrs {
+		if strings.Contains(lower, strings.ToLower(sub)) {
+			return true
+		}
+	}
+	return false
 }

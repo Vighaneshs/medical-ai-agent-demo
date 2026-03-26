@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"kyron-medical/models"
@@ -54,6 +56,98 @@ func vapiLLMConfig(systemPrompt string, history []models.ChatMessage) map[string
 	}
 }
 
+// lastAssistantMessage returns the most recent non-empty assistant message from
+// history, truncated to maxLen characters at a sentence boundary where possible.
+func lastAssistantMessage(history []models.ChatMessage, maxLen int) string {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Role != "assistant" {
+			continue
+		}
+		msg := strings.TrimSpace(history[i].Content)
+		if msg == "" {
+			continue
+		}
+		if len(msg) <= maxLen {
+			return msg
+		}
+		truncated := msg[:maxLen]
+		if idx := strings.LastIndexAny(truncated, ".!?"); idx > maxLen/2 {
+			return truncated[:idx+1]
+		}
+		return truncated + "…"
+	}
+	return ""
+}
+
+// stateContextLine returns a one-sentence summary of what the session was doing,
+// used to orient the patient at the start of a voice call.
+func stateContextLine(sess *models.Session) string {
+	switch sess.State {
+	case models.StateIntake:
+		return "I was just collecting your information to find you the right specialist."
+	case models.StateMatching:
+		if sess.PatientInfo.ReasonForVisit != "" {
+			return fmt.Sprintf("I was finding the right specialist for your %s.", sess.PatientInfo.ReasonForVisit)
+		}
+		return "I was finding you the right specialist."
+	case models.StateScheduling:
+		if sess.MatchedDoctor != nil {
+			return fmt.Sprintf("I was helping you schedule an appointment with %s.", sess.MatchedDoctor.Name)
+		}
+	case models.StateConfirming:
+		if sess.MatchedDoctor != nil && sess.SelectedSlot != nil {
+			return fmt.Sprintf("We were about to confirm your appointment with %s on %s.",
+				sess.MatchedDoctor.Name, services.FormatDateReadable(sess.SelectedSlot.Date))
+		}
+	case models.StateBooked:
+		if sess.MatchedDoctor != nil {
+			return fmt.Sprintf("Your appointment with %s has already been confirmed!", sess.MatchedDoctor.Name)
+		}
+	case models.StatePrescription:
+		return "I was helping you with a prescription refill."
+	case models.StateHours:
+		return "I was providing Kyron Medical's office information."
+	}
+	return ""
+}
+
+// buildVoiceFirstMessage produces a state-aware, personalised opening line for
+// Vapi. If the session has history it recaps the last thing Kyron said so the
+// patient immediately knows where the conversation stands.
+func buildVoiceFirstMessage(sess *models.Session, isPhone bool) string {
+	firstName := sess.PatientInfo.FirstName
+
+	if firstName == "" {
+		if isPhone {
+			return "Hi, this is Kyron calling from Kyron Medical. How can I help you today?"
+		}
+		return "Hi, I'm Kyron, the AI care coordinator for Kyron Medical. How can I help you today?"
+	}
+
+	var intro string
+	if isPhone {
+		intro = fmt.Sprintf("Hi %s, this is Kyron from Kyron Medical", firstName)
+	} else {
+		intro = fmt.Sprintf("Hi %s, I'm Kyron continuing from our chat", firstName)
+	}
+
+	stateCtx := stateContextLine(sess)
+	lastMsg := lastAssistantMessage(sess.Messages, 140)
+
+	var sb strings.Builder
+	sb.WriteString(intro)
+	sb.WriteString(". ")
+	if stateCtx != "" {
+		sb.WriteString(stateCtx)
+		sb.WriteString(" ")
+	}
+	if lastMsg != "" {
+		sb.WriteString(fmt.Sprintf("To quickly recap — I last said: \"%s\" ", lastMsg))
+	}
+	sb.WriteString("How can I help?")
+	return sb.String()
+}
+
 func (h *VoiceHandler) HandleInitiate(w http.ResponseWriter, r *http.Request) {
 	var req models.VoiceInitiateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.SessionID == "" {
@@ -71,14 +165,7 @@ func (h *VoiceHandler) HandleInitiate(w http.ResponseWriter, r *http.Request) {
 
 	systemPrompt := services.Build(sess)
 
-	firstName := sess.PatientInfo.FirstName
-	reason := sess.PatientInfo.ReasonForVisit
-	firstMessage := "Hi, I'm Kyron, the AI care coordinator for Kyron Medical. How can I help you today?"
-	if firstName != "" && reason != "" {
-		firstMessage = "Hi " + firstName + ", I'm Kyron continuing our conversation. I see you're here about " + reason + ". How can I help?"
-	} else if firstName != "" {
-		firstMessage = "Hi " + firstName + ", I'm Kyron. I have your information from our chat — how can I help?"
-	}
+	firstMessage := buildVoiceFirstMessage(sess, false)
 
 	resp := models.VoiceInitiateResponse{
 		AssistantID: os.Getenv("VAPI_ASSISTANT_ID"),
@@ -119,11 +206,7 @@ func (h *VoiceHandler) HandleCallPhone(w http.ResponseWriter, r *http.Request) {
 	}
 	systemPrompt := services.Build(sess)
 
-	firstName := sess.PatientInfo.FirstName
-	firstMessage := "Hi, this is Kyron calling from Kyron Medical. How can I help you today?"
-	if firstName != "" {
-		firstMessage = "Hi " + firstName + ", this is Kyron from Kyron Medical calling to continue our conversation. How can I help?"
-	}
+	firstMessage := buildVoiceFirstMessage(sess, true)
 
 	payload := map[string]interface{}{
 		"assistantId": assistantID,
@@ -190,15 +273,9 @@ func (h *VoiceHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 			}
 
 			systemPrompt := services.Build(sess)
-			firstName := sess.PatientInfo.FirstName
-
-			firstMessage := "Welcome back to Kyron Medical."
-			if firstName != "" {
-				firstMessage = "Hi " + firstName + ", welcome back. I remember you from our previous conversation — let me pick up right where we left off."
-			}
 
 			overrides = map[string]interface{}{
-				"firstMessage": firstMessage,
+				"firstMessage": buildVoiceFirstMessage(sess, true),
 				"model":        vapiLLMConfig(systemPrompt, sess.Messages),
 			}
 		}
