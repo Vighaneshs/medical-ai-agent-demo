@@ -87,7 +87,7 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[chat] session=%s   tool=%s input=%v", sess.ID, c.ToolName, c.Input)
 	}
 
-	newState, toolErrs := h.executeToolCalls(sess, calls, r)
+	newState, toolErrs := executeToolCalls(sess, calls)
 	log.Printf("[chat] session=%s new_state=%s tool_errors=%d", sess.ID, newState, len(toolErrs))
 	// Inject tool errors into session history so the AI sees what failed
 	// and can apologise + offer corrected options on the next turn.
@@ -138,7 +138,7 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		var contErrs []string
 		if len(calls) > 0 {
 			log.Printf("[chat] session=%s continuation attempt=%d produced %d tool calls", sess.ID, attempt, len(calls))
-			newState, contErrs = h.executeToolCalls(sess, calls, r)
+			newState, contErrs = executeToolCalls(sess, calls)
 			for _, e := range contErrs {
 				h.sessions.AppendMessage(sess, "user", e)
 			}
@@ -190,7 +190,7 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 // that failed with recoverable data errors (invalid doctor, booked slot, etc.).
 // Errors are injected back into the session history by the caller so the AI
 // can apologise and offer the patient corrected options.
-func (h *ChatHandler) executeToolCalls(sess *models.Session, calls []services.ToolCallResult, r *http.Request) (models.SessionState, []string) {
+func executeToolCalls(sess *models.Session, calls []services.ToolCallResult) (models.SessionState, []string) {
 	var errs []string
 
 	for _, call := range calls {

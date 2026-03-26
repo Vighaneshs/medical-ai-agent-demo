@@ -58,6 +58,7 @@ func main() {
 		r.Post("/voice/initiate", voiceHandler.HandleInitiate)
 		r.Post("/voice/call-phone", voiceHandler.HandleCallPhone)
 		r.Post("/voice/webhook", voiceHandler.HandleWebhook)
+		r.Post("/voice/tool", voiceHandler.HandleToolCall)
 		r.Get("/doctors", handlers.HandleDoctors)
 		r.Get("/appointment", handlers.HandleAppointment)
 		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
