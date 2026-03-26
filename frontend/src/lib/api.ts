@@ -129,6 +129,14 @@ export async function getSession(sessionId: string) {
   }>;
 }
 
+export async function registerCall(sessionId: string, callId: string) {
+  await fetch(`${API_URL}/api/voice/register-call`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, callId }),
+  });
+}
+
 export async function initiatePhoneCall(sessionId: string, phone: string) {
   const res = await fetch(`${API_URL}/api/voice/call-phone`, {
     method: 'POST',

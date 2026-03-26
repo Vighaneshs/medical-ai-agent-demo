@@ -58,6 +58,7 @@ func main() {
 		r.Post("/voice/initiate", voiceHandler.HandleInitiate)
 		r.Post("/voice/call-phone", voiceHandler.HandleCallPhone)
 		r.Post("/voice/webhook", voiceHandler.HandleWebhook)
+		r.Post("/voice/register-call", voiceHandler.HandleRegisterCall)
 		r.Post("/voice/tool", voiceHandler.HandleToolCall)
 		r.Options("/voice/tool", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
 		r.Get("/doctors", handlers.HandleDoctors)

@@ -312,6 +312,23 @@ func (h *VoiceHandler) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HandleRegisterCall stores a Vapi call ID → session ID mapping.
+// The browser SDK fires call-start with the call ID; the frontend POSTs here
+// so HandleToolCall can resolve the session without relying on metadata.
+func (h *VoiceHandler) HandleRegisterCall(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		SessionID string `json:"sessionId"`
+		CallID    string `json:"callId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.SessionID == "" || req.CallID == "" {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	h.sessions.RegisterCallID(req.CallID, req.SessionID)
+	log.Printf("[voice] registered call %s → session %s", req.CallID, req.SessionID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // HandleToolCall handles Vapi server-side tool-call webhooks.
 // Vapi POSTs here when the voice LLM invokes one of the tools defined in
 // vapiToolDefinitions. We execute the tool via the shared executeToolCalls
@@ -344,16 +361,30 @@ func (h *VoiceHandler) HandleToolCall(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("[voice/tool] msg keys=%v call keys=%v", mapKeys(msg), mapKeys(call))
 
-	// Resolve session ID: check every plausible location Vapi might put it.
-	sessionID := ""
-	for _, src := range []map[string]interface{}{
-		nestedMap(call, "metadata"),
-		nestedMap(msg, "metadata"),
-		nestedMap(payload, "metadata"),
-	} {
-		if id, _ := src["sessionId"].(string); id != "" {
-			sessionID = id
-			break
+	// Resolve session ID — try each source in reliability order:
+	// 1. Query param (URL interpolation in Vapi dashboard)
+	// 2. Call ID registered by the browser SDK via POST /api/voice/register-call
+	// 3. Metadata fields in the payload body
+	sessionID := r.URL.Query().Get("sessionId")
+
+	if sessionID == "" {
+		if callID, _ := call["id"].(string); callID != "" {
+			if sess := h.sessions.GetByCallID(callID); sess != nil {
+				sessionID = sess.ID
+				log.Printf("[voice/tool] resolved session %s via call ID %s", sessionID, callID)
+			}
+		}
+	}
+	if sessionID == "" {
+		for _, src := range []map[string]interface{}{
+			nestedMap(call, "metadata"),
+			nestedMap(msg, "metadata"),
+			nestedMap(payload, "metadata"),
+		} {
+			if id, _ := src["sessionId"].(string); id != "" {
+				sessionID = id
+				break
+			}
 		}
 	}
 

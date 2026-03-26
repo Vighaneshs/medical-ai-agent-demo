@@ -17,8 +17,23 @@ import (
 // SessionStore is a write-through cache: in-memory for fast reads,
 // SQLite for persistence across restarts.
 type SessionStore struct {
-	db    *sql.DB
-	cache sync.Map // map[string]*models.Session
+	db      *sql.DB
+	cache   sync.Map // map[string]*models.Session
+	callIDs sync.Map // map[vapiCallId]sessionId  — ephemeral, not persisted
+}
+
+// RegisterCallID maps a Vapi call ID to a session ID so HandleToolCall can
+// resolve the session without relying on metadata in the webhook payload.
+func (s *SessionStore) RegisterCallID(callID, sessionID string) {
+	s.callIDs.Store(callID, sessionID)
+}
+
+// GetByCallID returns the session for a given Vapi call ID, or nil.
+func (s *SessionStore) GetByCallID(callID string) *models.Session {
+	if v, ok := s.callIDs.Load(callID); ok {
+		return s.Get(v.(string))
+	}
+	return nil
 }
 
 var Store *SessionStore

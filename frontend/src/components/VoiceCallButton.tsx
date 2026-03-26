@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { initiateVoiceCall, initiatePhoneCall } from '@/lib/api';
+import { initiateVoiceCall, initiatePhoneCall, registerCall } from '@/lib/api';
 import { SessionState } from '@/types';
 
 interface Props {
@@ -38,7 +38,10 @@ export function VoiceCallButton({ sessionId, onCallEnd }: Props) {
       const { default: Vapi } = await import('@vapi-ai/web');
       const vapi = new Vapi(process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY || '');
       vapiRef[1](vapi);
-      vapi.on('call-start', () => setBrowserState('active'));
+      vapi.on('call-start', (call: any) => {
+        setBrowserState('active');
+        if (call?.id) registerCall(sessionId, call.id).catch(() => {});
+      });
       vapi.on('call-end', () => { setBrowserState('idle'); vapiRef[1](null); onCallEnd?.(); });
       vapi.on('error', (err: any) => {
         console.error('Vapi error:', err);
