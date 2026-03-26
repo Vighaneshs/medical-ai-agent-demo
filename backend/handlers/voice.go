@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"kyron-medical/models"
@@ -56,64 +55,9 @@ func vapiLLMConfig(systemPrompt string, history []models.ChatMessage) map[string
 	}
 }
 
-// lastAssistantMessage returns the most recent non-empty assistant message from
-// history, truncated to maxLen characters at a sentence boundary where possible.
-func lastAssistantMessage(history []models.ChatMessage, maxLen int) string {
-	for i := len(history) - 1; i >= 0; i-- {
-		if history[i].Role != "assistant" {
-			continue
-		}
-		msg := strings.TrimSpace(history[i].Content)
-		if msg == "" {
-			continue
-		}
-		if len(msg) <= maxLen {
-			return msg
-		}
-		truncated := msg[:maxLen]
-		if idx := strings.LastIndexAny(truncated, ".!?"); idx > maxLen/2 {
-			return truncated[:idx+1]
-		}
-		return truncated + "…"
-	}
-	return ""
-}
-
-// stateContextLine returns a one-sentence summary of what the session was doing,
-// used to orient the patient at the start of a voice call.
-func stateContextLine(sess *models.Session) string {
-	switch sess.State {
-	case models.StateIntake:
-		return "I was just collecting your information to find you the right specialist."
-	case models.StateMatching:
-		if sess.PatientInfo.ReasonForVisit != "" {
-			return fmt.Sprintf("I was finding the right specialist for your %s.", sess.PatientInfo.ReasonForVisit)
-		}
-		return "I was finding you the right specialist."
-	case models.StateScheduling:
-		if sess.MatchedDoctor != nil {
-			return fmt.Sprintf("I was helping you schedule an appointment with %s.", sess.MatchedDoctor.Name)
-		}
-	case models.StateConfirming:
-		if sess.MatchedDoctor != nil && sess.SelectedSlot != nil {
-			return fmt.Sprintf("We were about to confirm your appointment with %s on %s.",
-				sess.MatchedDoctor.Name, services.FormatDateReadable(sess.SelectedSlot.Date))
-		}
-	case models.StateBooked:
-		if sess.MatchedDoctor != nil {
-			return fmt.Sprintf("Your appointment with %s has already been confirmed!", sess.MatchedDoctor.Name)
-		}
-	case models.StatePrescription:
-		return "I was helping you with a prescription refill."
-	case models.StateHours:
-		return "I was providing Kyron Medical's office information."
-	}
-	return ""
-}
-
-// buildVoiceFirstMessage produces a state-aware, personalised opening line for
-// Vapi. If the session has history it recaps the last thing Kyron said so the
-// patient immediately knows where the conversation stands.
+// buildVoiceFirstMessage returns a short, natural spoken opener for Vapi.
+// It should be one sentence — the LLM already has the full system prompt and
+// conversation history via vapiLLMConfig and will handle the rest naturally.
 func buildVoiceFirstMessage(sess *models.Session, isPhone bool) string {
 	firstName := sess.PatientInfo.FirstName
 
@@ -124,28 +68,37 @@ func buildVoiceFirstMessage(sess *models.Session, isPhone bool) string {
 		return "Hi, I'm Kyron, the AI care coordinator for Kyron Medical. How can I help you today?"
 	}
 
-	var intro string
+	id := "I'm Kyron"
 	if isPhone {
-		intro = fmt.Sprintf("Hi %s, this is Kyron from Kyron Medical", firstName)
-	} else {
-		intro = fmt.Sprintf("Hi %s, I'm Kyron continuing from our chat", firstName)
+		id = "this is Kyron from Kyron Medical"
 	}
 
-	stateCtx := stateContextLine(sess)
-	lastMsg := lastAssistantMessage(sess.Messages, 140)
+	switch sess.State {
+	case models.StateIntake:
+		return fmt.Sprintf("Hi %s, %s — shall we carry on getting your details?", firstName, id)
+	case models.StateMatching:
+		if r := sess.PatientInfo.ReasonForVisit; r != "" {
+			return fmt.Sprintf("Hi %s, %s — I'm still working on finding the right specialist for your %s. Ready to continue?", firstName, id, r)
+		}
+		return fmt.Sprintf("Hi %s, %s — shall we carry on finding you the right specialist?", firstName, id)
+	case models.StateScheduling:
+		if sess.MatchedDoctor != nil {
+			return fmt.Sprintf("Hi %s, %s — shall we finish scheduling your appointment with %s?", firstName, id, sess.MatchedDoctor.Name)
+		}
+	case models.StateConfirming:
+		if sess.MatchedDoctor != nil && sess.SelectedSlot != nil {
+			return fmt.Sprintf("Hi %s, %s — ready to confirm your appointment with %s on %s?",
+				firstName, id, sess.MatchedDoctor.Name, services.FormatDateReadable(sess.SelectedSlot.Date))
+		}
+	case models.StateBooked:
+		return fmt.Sprintf("Hi %s, %s — your appointment is all set! Is there anything else I can help with?", firstName, id)
+	case models.StatePrescription:
+		return fmt.Sprintf("Hi %s, %s — shall we carry on with your prescription refill?", firstName, id)
+	case models.StateHours:
+		return fmt.Sprintf("Hi %s, %s — how can I help you today?", firstName, id)
+	}
 
-	var sb strings.Builder
-	sb.WriteString(intro)
-	sb.WriteString(". ")
-	if stateCtx != "" {
-		sb.WriteString(stateCtx)
-		sb.WriteString(" ")
-	}
-	if lastMsg != "" {
-		sb.WriteString(fmt.Sprintf("To quickly recap — I last said: \"%s\" ", lastMsg))
-	}
-	sb.WriteString("How can I help?")
-	return sb.String()
+	return fmt.Sprintf("Hi %s, %s — great to connect. How can I help you today?", firstName, id)
 }
 
 func (h *VoiceHandler) HandleInitiate(w http.ResponseWriter, r *http.Request) {
