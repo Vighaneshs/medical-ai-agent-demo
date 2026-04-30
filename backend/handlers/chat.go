@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -197,23 +196,6 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 			justEnteredMatching || justEnteredBooked ||
 			len(contErrs) > 0
 		oldState = newState
-	}
-
-	// INTAKE BACKSTOP: Opus 4.7 sometimes emits the friendly text ("let me find
-	// the right specialist!") without the required collect_intake tool_use block,
-	// leaving the session permanently stuck in INTAKE. If the user's last message
-	// looks like a complete intake submission (from the IntakeForm) and we're
-	// still in INTAKE with no tool call, force a collect_intake call.
-	if sess.State == models.StateIntake && looksLikeIntakeSubmission(lastUserMessage(sess)) {
-		log.Printf("[chat] session=%s INTAKE backstop: forcing collect_intake tool call", sess.ID)
-		newState = h.runForcedToolTurn(ctx, w, flusher, sess, "collect_intake", &assistantText)
-
-		// If forcing collect_intake transitioned us into MATCHING, run another
-		// regular turn so the AI introduces the matched specialist.
-		if newState == models.StateMatching {
-			log.Printf("[chat] session=%s INTAKE backstop: continuing into MATCHING", sess.ID)
-			newState = h.runMatchingFollowup(ctx, w, flusher, sess, &assistantText)
-		}
 	}
 
 	// Fallback: if the booking was confirmed but the AI produced no text (e.g. silent
@@ -499,134 +481,121 @@ func truncateStr(s string, n int) string {
 	return s[:n] + "…"
 }
 
-// lastUserMessage returns the most recent user message in the session, or "".
-func lastUserMessage(sess *models.Session) string {
-	for i := len(sess.Messages) - 1; i >= 0; i-- {
-		if sess.Messages[i].Role == "user" {
-			return sess.Messages[i].Content
-		}
-	}
-	return ""
-}
-
-// looksLikeIntakeSubmission returns true when a user message looks like a
-// complete patient-info submission from the IntakeForm. The form sends:
-//   "My name is X Y, date of birth Z, phone +1A, email B@C. Reason for visit: D."
-// We require email-shape, "name", and "date of birth" to keep this tight enough
-// that partial intake messages don't trigger the forced tool call.
-func looksLikeIntakeSubmission(msg string) bool {
-	m := strings.ToLower(msg)
-	return strings.Contains(m, "@") &&
-		strings.Contains(m, "name") &&
-		strings.Contains(m, "date of birth")
-}
-
-// runForcedToolTurn streams a follow-up turn that forces the named tool to be
-// invoked via Anthropic's tool_choice. Falls back to a regular Stream if the
-// active provider isn't ClaudeService (e.g. Gemini doesn't expose a typed
-// forcing API here yet — its prompt-only retry is the best we can do).
-func (h *ChatHandler) runForcedToolTurn(
-	ctx context.Context,
-	w http.ResponseWriter,
-	flusher http.Flusher,
-	sess *models.Session,
-	forceTool string,
-	assistantText *string,
-) models.SessionState {
-	// Persist any pending text from the previous turn before the forced retry,
-	// and signal a new bubble so the user sees the forced turn as a separate message.
-	if strings.TrimSpace(*assistantText) != "" {
-		h.sessions.AppendMessage(sess, "assistant", *assistantText)
-		*assistantText = ""
-		sep, _ := json.Marshal(map[string]bool{"newMessage": true})
-		fmt.Fprintf(w, "data: %s\n\n", sep)
-		flusher.Flush()
+// HandleIntakeSubmit accepts a structured patient-info submission from the
+// IntakeForm and advances the session deterministically from INTAKE → MATCHING
+// without a round-trip through the LLM for data collection. After the state
+// transition it streams a single LLM turn so the AI can introduce the matched
+// specialist to the patient.
+//
+// This bypasses the brittle "LLM emits collect_intake tool_use block" path that
+// became unreliable on Opus 4.7 — voice still uses the tool-call path because
+// voice doesn't have a structured form to submit.
+func (h *ChatHandler) HandleIntakeSubmit(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
 	}
 
-	sp := services.Build(sess)
+	var req struct {
+		SessionID      string `json:"sessionId"`
+		FirstName      string `json:"firstName"`
+		LastName       string `json:"lastName"`
+		DOB            string `json:"dob"`
+		Phone          string `json:"phone"`
+		Email          string `json:"email"`
+		ReasonForVisit string `json:"reasonForVisit"`
+		// TranscriptText is the human-readable line shown in the chat
+		// transcript (e.g. "My name is Jane Smith, date of birth ...").
+		// If empty, a default summary line is used.
+		TranscriptText string `json:"transcriptText"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil ||
+		req.SessionID == "" || req.FirstName == "" || req.LastName == "" ||
+		req.DOB == "" || req.Phone == "" || req.Email == "" || req.ReasonForVisit == "" {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	sess := h.sessions.GetOrCreate(req.SessionID)
+	log.Printf("[intake] session=%s state=%s submitting structured intake", sess.ID, sess.State)
+
+	transcript := req.TranscriptText
+	if transcript == "" {
+		transcript = fmt.Sprintf("My name is %s %s, date of birth %s, phone %s, email %s. Reason for visit: %s.",
+			req.FirstName, req.LastName, req.DOB, req.Phone, req.Email, req.ReasonForVisit)
+	}
+	h.sessions.AppendMessage(sess, "user", transcript)
+
+	sess.PatientInfo = models.PatientInfo{
+		FirstName:      req.FirstName,
+		LastName:       req.LastName,
+		DOB:            req.DOB,
+		Phone:          req.Phone,
+		Email:          req.Email,
+		ReasonForVisit: req.ReasonForVisit,
+	}
+	sess.PhoneNumber = req.Phone
+	sess.State = models.StateMatching
+	h.sessions.Save(sess)
+
+	systemPrompt := services.Build(sess)
 	chatWindow := sess.Messages
 	if len(chatWindow) > 20 {
 		chatWindow = chatWindow[len(chatWindow)-20:]
 	}
 
-	tc := make(chan string, 100)
-	tr := make(chan []services.ToolCallResult, 1)
-
-	if claude, ok := services.AI.(*services.ClaudeService); ok {
-		go claude.StreamForcedTool(ctx, sp, chatWindow, forceTool, tc, tr)
-	} else {
-		go services.AI.Stream(ctx, sp, chatWindow, tc, tr)
-	}
-
-	for chunk := range tc {
-		if ctx.Err() != nil {
-			return sess.State
-		}
-		*assistantText += chunk
-		data, _ := json.Marshal(models.SSEChunk{Text: chunk})
-		fmt.Fprintf(w, "data: %s\n\n", data)
-		flusher.Flush()
-	}
-	calls := <-tr
-	log.Printf("[chat] session=%s forced %s produced %d tool calls", sess.ID, forceTool, len(calls))
-	if len(calls) == 0 {
-		return sess.State
-	}
-	newState, _ := executeToolCalls(sess, calls)
-	return newState
-}
-
-// runMatchingFollowup runs an unforced turn after the session has just entered
-// MATCHING, so the AI can introduce the matched specialist to the patient.
-func (h *ChatHandler) runMatchingFollowup(
-	ctx context.Context,
-	w http.ResponseWriter,
-	flusher http.Flusher,
-	sess *models.Session,
-	assistantText *string,
-) models.SessionState {
-	if strings.TrimSpace(*assistantText) != "" {
-		h.sessions.AppendMessage(sess, "assistant", *assistantText)
-		*assistantText = ""
-		sep, _ := json.Marshal(map[string]bool{"newMessage": true})
-		fmt.Fprintf(w, "data: %s\n\n", sep)
-		flusher.Flush()
-	}
-
-	sp := services.Build(sess)
-	chatWindow := sess.Messages
-	if len(chatWindow) > 20 {
-		chatWindow = chatWindow[len(chatWindow)-20:]
-	}
-	if len(chatWindow) > 0 && chatWindow[len(chatWindow)-1].Role == "assistant" {
-		extended := make([]models.ChatMessage, len(chatWindow)+1)
+	if len(chatWindow) > 0 {
+		extended := make([]models.ChatMessage, len(chatWindow))
 		copy(extended, chatWindow)
-		extended[len(chatWindow)] = models.ChatMessage{
-			Role:    "user",
-			Content: "Please go ahead and tell me about the best specialist for my condition.",
-		}
+		lastIdx := len(extended) - 1
+		extended[lastIdx].Content += "\n\n[SYSTEM NOTE: Intake is complete. You are now in MATCHING state. Immediately evaluate the reason for visit, recommend the best doctor, and ask the patient if they want to schedule with them. Do NOT just say thank you.]"
 		chatWindow = extended
 	}
 
-	tc := make(chan string, 100)
-	tr := make(chan []services.ToolCallResult, 1)
-	go services.AI.Stream(ctx, sp, chatWindow, tc, tr)
+	ctx := r.Context()
+	textChunks := make(chan string, 100)
+	toolResults := make(chan []services.ToolCallResult, 1)
+	go services.AI.Stream(ctx, systemPrompt, chatWindow, textChunks, toolResults)
 
-	for chunk := range tc {
+	var assistantText string
+	for chunk := range textChunks {
 		if ctx.Err() != nil {
-			return sess.State
+			return
 		}
-		*assistantText += chunk
+		assistantText += chunk
 		data, _ := json.Marshal(models.SSEChunk{Text: chunk})
 		fmt.Fprintf(w, "data: %s\n\n", data)
 		flusher.Flush()
 	}
-	calls := <-tr
+	calls := <-toolResults
 	if len(calls) > 0 {
-		newState, _ := executeToolCalls(sess, calls)
-		return newState
+		log.Printf("[intake] session=%s matching turn produced %d tool calls", sess.ID, len(calls))
+		executeToolCalls(sess, calls)
 	}
-	return sess.State
+	if strings.TrimSpace(assistantText) != "" {
+		h.sessions.AppendMessage(sess, "assistant", assistantText)
+	}
+	h.sessions.Save(sess)
+
+	doneEvent := models.SSEDone{Done: true, NewState: string(sess.State)}
+	if sess.MatchedDoctor != nil {
+		doneEvent.DoctorID = sess.MatchedDoctor.ID
+	}
+	if sess.SelectedSlot != nil {
+		doneEvent.SelectedSlot = sess.SelectedSlot
+	}
+	if sess.Appointment != nil {
+		doneEvent.AppointmentID = sess.Appointment.ID
+	}
+	done, _ := json.Marshal(doneEvent)
+	fmt.Fprintf(w, "data: %s\n\n", done)
+	flusher.Flush()
 }
 
 func strField(m map[string]interface{}, key string) string {

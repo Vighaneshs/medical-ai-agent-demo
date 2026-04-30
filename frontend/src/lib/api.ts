@@ -86,6 +86,60 @@ export async function sendMessage(
   throw lastError;
 }
 
+export interface IntakeSubmission {
+  firstName: string;
+  lastName: string;
+  dob: string;
+  phone: string;
+  email: string;
+  reasonForVisit: string;
+  transcriptText: string;
+}
+
+// submitIntake sends a structured intake payload and streams the matching
+// response. State advances deterministically on the backend (INTAKE → MATCHING)
+// — no LLM tool-call round-trip required for data collection.
+export async function submitIntake(
+  sessionId: string,
+  intake: IntakeSubmission,
+  onChunk: (chunk: SSEChunk) => void,
+): Promise<void> {
+  const res = await fetch(`${API_URL}/api/intake-submit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, ...intake }),
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`Intake submit failed: ${res.status}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let receivedDone = false;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const rawLine of lines) {
+      const line = rawLine.trimEnd();
+      if (!line.startsWith('data: ')) continue;
+      const payload = line.slice(6);
+      try {
+        const chunk: SSEChunk = JSON.parse(payload);
+        if (chunk.done) receivedDone = true;
+        onChunk(chunk);
+      } catch {
+        console.warn('[SSE] failed to parse chunk:', payload);
+      }
+    }
+  }
+  if (!receivedDone) throw new Error('Stream ended without done event');
+}
+
 export async function getAvailability(doctorId: string) {
   const res = await fetch(`${API_URL}/api/availability?doctorId=${doctorId}`);
   if (!res.ok) throw new Error('Failed to fetch availability');

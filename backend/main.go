@@ -54,6 +54,7 @@ func main() {
 
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/chat", chatHandler.HandleChat)
+		r.Post("/intake-submit", chatHandler.HandleIntakeSubmit)
 		r.Get("/availability", handlers.HandleAvailability)
 		r.Post("/voice/initiate", voiceHandler.HandleInitiate)
 		r.Post("/voice/call-phone", voiceHandler.HandleCallPhone)

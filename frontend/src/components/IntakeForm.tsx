@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import type { IntakeSubmission } from '@/lib/api';
 
 interface IntakeFormProps {
-  onSubmit: (message: string) => void;
+  onSubmit: (intake: IntakeSubmission) => void;
   disabled?: boolean;
 }
 
@@ -109,14 +110,22 @@ export function IntakeForm({ onSubmit, disabled }: IntakeFormProps) {
 
     if ((Object.keys(EMPTY) as (keyof FormFields)[]).some(k => validate(k, fields[k]) !== null)) return;
 
-    const text =
+    const transcriptText =
       `My name is ${fields.firstName.trim()} ${fields.lastName.trim()}, ` +
       `date of birth ${fields.dob}, ` +
       `phone ${countryCode}${fields.phone.trim()}, ` +
       `email ${fields.email.trim()}. ` +
       `Reason for visit: ${fields.reason.trim()}.`;
 
-    onSubmit(text);
+    onSubmit({
+      firstName: fields.firstName.trim(),
+      lastName: fields.lastName.trim(),
+      dob: fields.dob,
+      phone: `${countryCode}${fields.phone.trim()}`,
+      email: fields.email.trim(),
+      reasonForVisit: fields.reason.trim(),
+      transcriptText,
+    });
   }
 
   return (

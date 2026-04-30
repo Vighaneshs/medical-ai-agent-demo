@@ -37,32 +37,6 @@ func (c *ClaudeService) Stream(
 	textChunks chan<- string,
 	toolResults chan<- []ToolCallResult,
 ) {
-	c.streamWithChoice(ctx, systemPrompt, messages, "", textChunks, toolResults)
-}
-
-// StreamForcedTool runs a streaming completion that is forced to emit the named
-// tool. Used as a backstop when the model produces text without the required
-// tool_use block (a known failure mode on Opus 4.7 in the intake → matching
-// transition).
-func (c *ClaudeService) StreamForcedTool(
-	ctx context.Context,
-	systemPrompt string,
-	messages []models.ChatMessage,
-	forceTool string,
-	textChunks chan<- string,
-	toolResults chan<- []ToolCallResult,
-) {
-	c.streamWithChoice(ctx, systemPrompt, messages, forceTool, textChunks, toolResults)
-}
-
-func (c *ClaudeService) streamWithChoice(
-	ctx context.Context,
-	systemPrompt string,
-	messages []models.ChatMessage,
-	forceTool string,
-	textChunks chan<- string,
-	toolResults chan<- []ToolCallResult,
-) {
 	defer close(textChunks)
 	defer close(toolResults)
 
@@ -75,18 +49,13 @@ func (c *ClaudeService) streamWithChoice(
 		}
 	}
 
-	params := anthropic.MessageNewParams{
+	stream := c.client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
 		Model:     anthropic.Model(claudeModel()),
 		MaxTokens: 4096,
 		System:    []anthropic.TextBlockParam{{Text: systemPrompt}},
 		Messages:  anthropicMessages,
 		Tools:     buildClaudeTools(),
-	}
-	if forceTool != "" {
-		params.ToolChoice = anthropic.ToolChoiceParamOfTool(forceTool)
-	}
-
-	stream := c.client.Messages.NewStreaming(ctx, params)
+	})
 
 	acc := anthropic.Message{}
 	for stream.Next() {

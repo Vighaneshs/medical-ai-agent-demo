@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { v4 as uuidv4 } from 'uuid'; // Keep uuidv4 as it's used elsewhere
 import { ChatMessage, Doctor, SessionState, TimeSlot } from '@/types';
-import { sendMessage, getDoctors, getSession } from '@/lib/api';
+import { sendMessage, getDoctors, getSession, submitIntake, IntakeSubmission } from '@/lib/api';
 import { SESSION_KEY } from '@/lib/constants';
 import { MessageBubble } from './MessageBubble';
 import { TypingIndicator } from './TypingIndicator';
@@ -222,6 +222,58 @@ export function ChatInterface() {
     setIsStreaming(false);
   }, [isStreaming, messages.length]);
 
+  // handleIntakeSubmit advances state via the structured /api/intake-submit
+  // endpoint instead of routing through the LLM. The transcript line is added
+  // to the chat as a user bubble, and the matching response streams back.
+  const handleIntakeSubmit = useCallback(async (intake: IntakeSubmission) => {
+    if (isStreaming) return;
+
+    const userMsg: ChatMessage = {
+      id: uuidv4(),
+      role: 'user',
+      content: intake.transcriptText,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, userMsg]);
+    setSendError(false);
+    setIsStreaming(true);
+    setStreamingText('');
+
+    let accumulated = '';
+    let failed = false;
+
+    try {
+      await submitIntake(sessionId.current, intake, (chunk) => {
+        if (chunk.text) {
+          accumulated += chunk.text;
+          setStreamingText(accumulated);
+        }
+        if (chunk.done) {
+          if (chunk.newState) setSessionState(chunk.newState as SessionState);
+          setMatchedDoctorId(chunk.doctorId || null);
+          setSelectedSlot(chunk.selectedSlot || null);
+        }
+      });
+    } catch {
+      failed = true;
+      setSendError(true);
+    }
+
+    if (accumulated.trim()) {
+      setMessages(prev => [...prev, {
+        id: uuidv4(),
+        role: 'assistant',
+        content: accumulated.trim(),
+        createdAt: new Date().toISOString(),
+      }]);
+    } else if (failed) {
+      setMessages(prev => prev.filter(m => m.id !== userMsg.id));
+    }
+
+    setStreamingText('');
+    setIsStreaming(false);
+  }, [isStreaming]);
+
   const matchedDoctor = matchedDoctorId ? doctorsMap[matchedDoctorId] : null;
 
   const handleSlotSelect = useCallback((slot: TimeSlot) => {
@@ -374,7 +426,7 @@ export function ChatInterface() {
               exit={{ opacity: 0, y: 4 }}
               transition={{ duration: 0.2 }}
             >
-              <IntakeForm onSubmit={handleSend} disabled={isStreaming} />
+              <IntakeForm onSubmit={handleIntakeSubmit} disabled={isStreaming} />
             </motion.div>
           )}
         </AnimatePresence>
