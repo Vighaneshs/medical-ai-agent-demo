@@ -4,8 +4,8 @@ import { NavBar } from '@/components/NavBar';
 import { AuthGuard } from '@/components/AuthGuard';
 
 export const metadata: Metadata = {
-  title: 'Kyron Medical — AI Care Coordinator',
-  description: 'Schedule appointments and manage your care with Kyron Medical AI.',
+  title: 'Agentic Medical — AI Care Coordinator',
+  description: 'Schedule appointments and manage your care with Agentic Medical AI.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

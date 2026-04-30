@@ -67,11 +67,11 @@ export function InputBar({ onSend, disabled }: Props) {
           onClick={submit}
           disabled={disabled || !value.trim()}
           whileTap={{ scale: 0.90 }}
-          whileHover={(!disabled && value.trim()) ? { scale: 1.05, boxShadow: '0 0 15px rgba(0,210,255,0.5)' } : {}}
+          whileHover={(!disabled && value.trim()) ? { scale: 1.05, boxShadow: '0 0 15px rgba(6,182,212,0.5)' } : {}}
           className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all"
           style={{
             background: disabled || !value.trim()
-              ? 'rgba(0, 210, 255, 0.15)'
+              ? 'rgba(6, 182, 212, 0.15)'
               : 'linear-gradient(135deg, var(--primary), var(--primary-dark))',
             cursor: disabled || !value.trim() ? 'not-allowed' : 'pointer',
             border: '1px solid rgba(255,255,255,0.1)',
@@ -87,7 +87,7 @@ export function InputBar({ onSend, disabled }: Props) {
         </motion.button>
       </div>
       <p className="text-center mt-2 text-xs" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>
-        Kyron Medical AI · Not a substitute for medical advice
+        Agentic Medical AI · Not a substitute for medical advice
       </p>
     </div>
   );

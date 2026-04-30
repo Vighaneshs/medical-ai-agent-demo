@@ -16,7 +16,7 @@ export default async function DoctorsPage() {
     <div className="max-w-2xl mx-auto px-4 py-10">
       <h1 className="text-2xl font-bold mb-2">Our Doctors</h1>
       <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-        Meet our team of specialist physicians. Chat with Kyron to book an appointment.
+        Meet our team of specialist physicians. Chat with our AI to book an appointment.
       </p>
 
       {doctors.length === 0 ? (

@@ -23,7 +23,7 @@ describe('LoginPage', () => {
 
   it('shows brand heading', () => {
     render(<LoginPage />);
-    expect(screen.getByText('Kyron Medical')).toBeInTheDocument();
+    expect(screen.getByText('Agentic Medical')).toBeInTheDocument();
   });
 
   it('shows error when submitting with empty username', () => {

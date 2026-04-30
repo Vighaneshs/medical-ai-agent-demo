@@ -41,12 +41,12 @@ export default function LoginPage() {
         <div className="flex flex-col items-center gap-3">
           <div
             className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-bold"
-            style={{ background: 'linear-gradient(135deg, #577DE8, #48ACF0)' }}
+            style={{ background: 'linear-gradient(135deg, #0891B2, #06B6D4)' }}
           >
-            K
+            A
           </div>
           <div className="text-center">
-            <div className="font-semibold text-lg">Kyron Medical</div>
+            <div className="font-semibold text-lg">Agentic Medical</div>
             <div className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
               AI Care Coordinator
             </div>
@@ -98,7 +98,7 @@ export default function LoginPage() {
           <button
             type="submit"
             className="w-full py-2.5 rounded-xl text-sm font-semibold transition-opacity hover:opacity-90"
-            style={{ background: 'linear-gradient(135deg, #577DE8, #48ACF0)', color: '#fff' }}
+            style={{ background: 'linear-gradient(135deg, #0891B2, #06B6D4)', color: '#fff' }}
           >
             Start chatting →
           </button>

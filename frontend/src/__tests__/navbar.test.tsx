@@ -38,7 +38,7 @@ describe('NavBar', () => {
   it('always renders the brand name', () => {
     mockUsePathname.mockReturnValue('/');
     render(<NavBar />);
-    expect(screen.getByText('Kyron Medical')).toBeInTheDocument();
+    expect(screen.getByText('Agentic Medical')).toBeInTheDocument();
   });
 
   it('shows nav links on the chat page', async () => {

@@ -93,7 +93,7 @@ export function VoiceCallButton({ sessionId, onCallEnd }: Props) {
           <div className="glass p-8 flex flex-col items-center gap-6 w-full shadow-2xl" style={{ maxWidth: 340, transform: 'translateY(-10vh)' }}>
             <div
               className="w-16 h-16 rounded-full flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #577DE8, #48ACF0)' }}
+              style={{ background: 'linear-gradient(135deg, #0891B2, #06B6D4)' }}
             >
               <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
                 <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
@@ -101,7 +101,7 @@ export function VoiceCallButton({ sessionId, onCallEnd }: Props) {
             </div>
             <div className="text-center">
               <div className="font-semibold mb-1">
-                {browserState === 'ending' ? 'Ending call…' : 'Speaking with Kyron AI'}
+                {browserState === 'ending' ? 'Ending call…' : 'Speaking with Agentic AI'}
               </div>
               <div className="text-sm" style={{ color: 'var(--text-muted)' }}>Your chat history is retained</div>
             </div>

@@ -300,13 +300,13 @@ export function ChatInterface() {
       >
         <div className="flex items-center gap-2 sm:gap-3">
           <div
-            className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-sm font-bold shadow-[0_0_15px_rgba(87,125,232,0.3)] hidden xs:flex"
+            className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-sm font-bold shadow-[0_0_15px_rgba(6,182,212,0.3)] hidden xs:flex"
             style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))' }}
           >
-            K
+            A
           </div>
           <div>
-            <div className="font-semibold text-sm">Kyron Medical</div>
+            <div className="font-semibold text-sm">Agentic Medical</div>
             <div className="text-xs" style={{ color: 'var(--text-muted)' }}>AI Care Coordinator</div>
           </div>
         </div>
@@ -353,9 +353,9 @@ export function ChatInterface() {
                 onClick={() => handleSend(lastMessageRef.current)}
                 className="text-xs px-3 py-1.5 rounded-lg font-medium"
                 style={{
-                  background: 'rgba(87,125,232,0.12)',
-                  border: '1px solid rgba(87,125,232,0.3)',
-                  color: '#7BA4EF',
+                  background: 'rgba(6,182,212,0.12)',
+                  border: '1px solid rgba(6,182,212,0.3)',
+                  color: '#67E8F9',
                   cursor: 'pointer',
                 }}
               >
@@ -428,19 +428,19 @@ export function ChatInterface() {
                   onClick={() => handleSend(message)}
                   className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm font-medium border transition-all"
                   style={{
-                    background: 'rgba(87, 125, 232, 0.1)',
-                    borderColor: 'rgba(87, 125, 232, 0.3)',
+                    background: 'rgba(6, 182, 212, 0.1)',
+                    borderColor: 'rgba(6, 182, 212, 0.3)',
                     color: 'var(--text)',
                     boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
                   }}
                   onMouseEnter={e => {
-                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(87, 125, 232, 0.2)';
-                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(87, 125, 232, 0.6)';
-                    (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 15px rgba(87, 125, 232, 0.3)';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(6, 182, 212, 0.2)';
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(6, 182, 212, 0.6)';
+                    (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 15px rgba(6, 182, 212, 0.3)';
                   }}
                   onMouseLeave={e => {
-                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(87, 125, 232, 0.1)';
-                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(87, 125, 232, 0.3)';
+                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(6, 182, 212, 0.1)';
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(6, 182, 212, 0.3)';
                     (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 15px rgba(0,0,0,0.2)';
                   }}
                 >

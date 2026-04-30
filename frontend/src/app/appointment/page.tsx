@@ -46,9 +46,9 @@ export default function AppointmentPage() {
           <Link
             href="/"
             className="text-sm font-medium px-4 py-2 rounded-full"
-            style={{ background: 'rgba(87,125,232,0.15)', color: '#7BA4EF', border: '1px solid rgba(87,125,232,0.3)' }}
+            style={{ background: 'rgba(6,182,212,0.15)', color: '#67E8F9', border: '1px solid rgba(6,182,212,0.3)' }}
           >
-            Chat with Kyron to book one →
+            Chat with our AI to book one →
           </Link>
         </div>
       </div>
@@ -86,13 +86,13 @@ export default function AppointmentPage() {
           <div className="flex items-center gap-3">
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #577DE8, #48ACF0)' }}
+              style={{ background: 'linear-gradient(135deg, #0891B2, #06B6D4)' }}
             >
               {appointment.doctor.imageInitials}
             </div>
             <div>
               <div className="text-sm font-semibold">{appointment.doctor.name}</div>
-              <div className="text-xs mt-0.5" style={{ color: '#7BA4EF' }}>{appointment.doctor.specialty}</div>
+              <div className="text-xs mt-0.5" style={{ color: '#67E8F9' }}>{appointment.doctor.specialty}</div>
             </div>
           </div>
         </Section>

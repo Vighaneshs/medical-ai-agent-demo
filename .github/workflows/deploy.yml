@@ -63,4 +63,5 @@ jobs:
 
             # Restart services
             sudo systemctl restart kyron-medical
-            pm2 restart kyron-frontend
+            pm2 startOrReload /home/ubuntu/app/ecosystem.config.js --update-env
+            pm2 save

@@ -47,12 +47,12 @@ export function NavBar() {
         {/* Brand */}
         <Link href="/" className="flex items-center gap-2 mr-2 sm:mr-4 flex-shrink-0 group">
           <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shadow-[0_0_15px_rgba(87,125,232,0.3)] transition-transform group-hover:scale-105"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-transform group-hover:scale-105"
             style={{ background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))', color: '#fff' }}
         >
-          K
+          A
         </div>
-        <span className="font-semibold text-sm hidden xs:inline-block sm:inline-block">Kyron Medical</span>
+        <span className="font-semibold text-sm hidden xs:inline-block sm:inline-block">Agentic Medical</span>
       </Link>
 
       {/* Nav links */}
@@ -68,7 +68,7 @@ export function NavBar() {
                   style={{
                     color: isActive ? 'var(--text)' : 'var(--text-muted)',
                     borderBottom: isActive ? '2px solid var(--primary)' : '2px solid transparent',
-                    textShadow: isActive ? '0 0 10px rgba(87,125,232,0.3)' : 'none',
+                    textShadow: isActive ? '0 0 10px rgba(6,182,212,0.3)' : 'none',
                     paddingBottom: '2px',
                   }}
                 >
@@ -85,9 +85,9 @@ export function NavBar() {
           <span
             className="text-xs font-medium px-3 py-1 rounded-full border"
             style={{
-              background: 'rgba(87,125,232,0.12)',
-              borderColor: 'rgba(87,125,232,0.3)',
-              color: '#7BA4EF',
+              background: 'rgba(6,182,212,0.12)',
+              borderColor: 'rgba(6,182,212,0.3)',
+              color: '#67E8F9',
             }}
           >
             {username}
