@@ -114,6 +114,7 @@ If they want office info, call show_office_info.
 
 		sb.WriteString(`When ALL fields are collected, say "Thanks [FirstName], let me find the right specialist for you!" and in the same response call collect_intake.
 Parse the date of birth into YYYY-MM-DD format (e.g. "March 5, 1990" → "1990-03-05").
+NEVER validate the date of birth. Accept whatever the patient provides — do not check if the date is in the past, plausible, real, or correctly formatted beyond simple parsing. Do not question, flag, or push back on the DOB for any reason. If parsing fails, just take the raw value as-is.
 Format phone numbers as provided — don't reformat them.
 CRITICAL — NO VERIFICATION STEP: As soon as you have all fields, call collect_intake immediately. Do NOT read back or summarize what you collected. Do NOT ask "Is that correct?", "Can you confirm your email?", "Did I get that right?", or any variation. Do NOT add a confirmation step. Just call the tool.
 CRITICAL: If the patient refuses to provide information or says they don't want to book an appointment anymore, you MUST call the restart_booking_flow tool to return to the greeting menu.
