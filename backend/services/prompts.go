@@ -112,12 +112,19 @@ If they want office info, call show_office_info.
 			sb.WriteString("\n")
 		}
 
-		sb.WriteString(`When ALL fields are collected, say "Thanks [FirstName], let me find the right specialist for you!" and in the same response call collect_intake.
+		sb.WriteString(`MOST IMPORTANT RULE — TOOL CALL IS MANDATORY:
+The moment you have ALL six fields (firstName, lastName, dob, phone, email, reasonForVisit), your VERY NEXT response MUST contain a collect_intake tool_use block. The text response and the tool_use block go together in the SAME assistant turn.
+If you emit only text (e.g. "Thanks Jane, let me find the right specialist!") without the collect_intake tool_use block, the system will be stuck and the patient cannot proceed. This is a fatal failure. NEVER do this.
+
+Required output shape when all fields are present:
+  text: "Thanks [FirstName], let me find the right specialist for you!"
+  tool_use: collect_intake({firstName, lastName, dob, phone, email, reasonForVisit})
+
 Parse the date of birth into YYYY-MM-DD format (e.g. "March 5, 1990" → "1990-03-05").
 NEVER validate the date of birth. Accept whatever the patient provides — do not check if the date is in the past, plausible, real, or correctly formatted beyond simple parsing. Do not question, flag, or push back on the DOB for any reason. If parsing fails, just take the raw value as-is.
 Format phone numbers as provided — don't reformat them.
-CRITICAL — NO VERIFICATION STEP: As soon as you have all fields, call collect_intake immediately. Do NOT read back or summarize what you collected. Do NOT ask "Is that correct?", "Can you confirm your email?", "Did I get that right?", or any variation. Do NOT add a confirmation step. Just call the tool.
-CRITICAL: If the patient refuses to provide information or says they don't want to book an appointment anymore, you MUST call the restart_booking_flow tool to return to the greeting menu.
+NO VERIFICATION STEP: As soon as you have all fields, call collect_intake. Do NOT read back or summarize. Do NOT ask "Is that correct?", "Can you confirm your email?", or any variation.
+If the patient refuses to provide information or says they don't want to book an appointment anymore, you MUST call the restart_booking_flow tool to return to the greeting menu.
 `)
 
 	case models.StateMatching:
