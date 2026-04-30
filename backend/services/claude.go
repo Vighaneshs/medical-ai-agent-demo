@@ -51,7 +51,7 @@ func (c *ClaudeService) Stream(
 
 	stream := c.client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
 		Model:     anthropic.Model(claudeModel()),
-		MaxTokens: 1024,
+		MaxTokens: 4096,
 		System:    []anthropic.TextBlockParam{{Text: systemPrompt}},
 		Messages:  anthropicMessages,
 		Tools:     buildClaudeTools(),
