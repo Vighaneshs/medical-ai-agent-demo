@@ -554,7 +554,7 @@ func (h *ChatHandler) HandleIntakeSubmit(w http.ResponseWriter, r *http.Request)
 		extended := make([]models.ChatMessage, len(chatWindow))
 		copy(extended, chatWindow)
 		lastIdx := len(extended) - 1
-		extended[lastIdx].Content += "\n\n[SYSTEM NOTE: Intake is complete. You are now in MATCHING state. Immediately evaluate the reason for visit, recommend the best doctor, and ask the patient if they want to schedule with them. Do NOT just say thank you.]"
+		extended[lastIdx].Content += "\n\n[SYSTEM NOTE: Intake is already saved. Do NOT call the collect_intake tool. You are now in MATCHING state. Immediately evaluate the reason for visit, recommend the best doctor, and ask the patient if they want to schedule with them. Do NOT just say thank you.]"
 		chatWindow = extended
 	}
 

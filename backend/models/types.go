@@ -96,13 +96,6 @@ type ChatRequest struct {
 	Message   string `json:"message"`
 }
 
-type BookRequest struct {
-	SessionID   string      `json:"sessionId"`
-	DoctorID    string      `json:"doctorId"`
-	Slot        TimeSlot    `json:"slot"`
-	PatientInfo PatientInfo `json:"patientInfo"`
-}
-
 type VoiceInitiateRequest struct {
 	SessionID string `json:"sessionId"`
 }
@@ -122,8 +115,4 @@ type SSEDone struct {
 	DoctorID      string    `json:"doctorId,omitempty"`
 	SelectedSlot  *TimeSlot `json:"selectedSlot,omitempty"`
 	AppointmentID string    `json:"appointmentId,omitempty"`
-}
-
-type SSEError struct {
-	Error string `json:"error"`
 }

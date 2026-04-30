@@ -61,5 +61,4 @@ export interface SSEChunk {
   doctorId?: string;
   selectedSlot?: TimeSlot;
   appointmentId?: string;
-  error?: string;
 }
